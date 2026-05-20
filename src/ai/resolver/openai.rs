@@ -1,15 +1,17 @@
 // OpenAI Resolver implementation based solely on HTTP.
 
-use crate::ai::message::Message;
 use crate::ai::resolver::action::{Action, Reason};
+use crate::ai::resolver::message::Message;
 use crate::ai::resolver::result::{ResolveError, ResolveResult};
 use crate::ai::resolver::tool::ToolCall;
 use crate::ai::resolver::{Context, Resolver};
 use openai_oxide::types::chat::{
-    ChatCompletionChoice, ChatCompletionMessageParam, ChatCompletionRequest, FinishReason,
-    FunctionCall, ToolCall as OxToolCall, UserContent,
+    ChatCompletionMessageParam, ChatCompletionRequest, FunctionCall, Tool as OxTool,
+    ToolCall as OxToolCall, UserContent,
 };
 use openai_oxide::{ClientConfig, OpenAI, OpenAIError};
+use serde_json::Value;
+use tracing::{Level, instrument};
 
 pub struct OpenAiResolver {
     client: OpenAI,
@@ -26,12 +28,8 @@ impl OpenAiResolver {
         let base_url = std::env::var("OPENAI_BASE_URL")
             .unwrap_or_else(|_| "https://api.openai.com/v1".to_string());
 
-        // Ensure trailing slash so Url::parse treats it as a directory base.
-        let base_url = if base_url.ends_with('/') {
-            base_url
-        } else {
-            format!("{base_url}/")
-        };
+        // Strip any trailing slash; openai-oxide concatenates base_url + path directly.
+        let base_url = base_url.trim_end_matches('/').to_string();
 
         Self {
             client: OpenAI::with_config(ClientConfig::new(api_key).base_url(base_url)),
@@ -61,6 +59,13 @@ impl OpenAiResolver {
                     .map(|tc| tc.iter().map(Self::map_tool_call).collect()),
                 refusal: refusal.clone(),
             },
+            Message::Tool {
+                tool_call_id,
+                content,
+            } => ChatCompletionMessageParam::Tool {
+                tool_call_id: tool_call_id.clone(),
+                content: content.clone(),
+            },
         }
     }
 
@@ -75,16 +80,12 @@ impl OpenAiResolver {
         }
     }
 
-    fn build_history(cx: &Context) -> Vec<ChatCompletionMessageParam> {
-        cx.messages.iter().map(Self::map_message).collect()
+    fn map_tool(tool: &crate::ai::resolver::tool::Tool) -> OxTool {
+        OxTool::function(&tool.name, &tool.description, tool.parameters.to_value())
     }
 
-    fn build_tool_call(call: OxToolCall) -> ToolCall {
-        ToolCall {
-            id: call.id,
-            name: call.function.name,
-            arguments: call.function.arguments,
-        }
+    fn build_history(cx: &Context) -> Vec<ChatCompletionMessageParam> {
+        cx.messages().iter().map(Self::map_message).collect()
     }
 
     fn map_err(err: OpenAIError) -> ResolveError {
@@ -104,24 +105,38 @@ impl OpenAiResolver {
         }
     }
 
-    fn build_action(choice: ChatCompletionChoice) -> Action {
-        let reason = match choice.finish_reason {
-            FinishReason::Stop => Reason::Finish,
-            FinishReason::Length => Reason::Length,
-            FinishReason::ToolCalls | FinishReason::FunctionCall => Reason::ToolCall,
+    fn build_action(choice: &Value) -> Action {
+        let finish_reason = choice["finish_reason"].as_str().unwrap_or("");
+
+        let reason = match finish_reason {
+            "stop" => Reason::Finish,
+            "length" => Reason::Length,
+            "tool_calls" | "function_call" => Reason::ToolCall,
             other => Reason::Unknown(other.to_string()),
         };
 
-        let msg = choice.message;
+        let msg = &choice["message"];
 
-        let tool_calls = msg
-            .tool_calls
-            .map(|tc| tc.into_iter().map(Self::build_tool_call).collect());
+        let content = msg["content"].as_str().map(|s| s.to_string());
+        let refusal = msg["refusal"].as_str().map(|s| s.to_string());
+
+        let tool_calls = msg["tool_calls"].as_array().map(|tc| {
+            tc.iter()
+                .map(|tc| ToolCall {
+                    id: tc["id"].as_str().unwrap_or("").to_string(),
+                    name: tc["function"]["name"].as_str().unwrap_or("").to_string(),
+                    arguments: tc["function"]["arguments"]
+                        .as_str()
+                        .unwrap_or("{}")
+                        .to_string(),
+                })
+                .collect()
+        });
 
         Action {
             reason,
-            content: msg.content,
-            refusal: msg.refusal,
+            content,
+            refusal,
             tool_calls,
         }
     }
@@ -129,22 +144,46 @@ impl OpenAiResolver {
 
 #[async_trait::async_trait]
 impl Resolver for OpenAiResolver {
+    #[instrument(skip(self, cx), fields(model = %cx.model()), level = Level::DEBUG)]
     async fn resolve(&mut self, cx: &Context) -> ResolveResult<Action> {
-        let request = ChatCompletionRequest::new(cx.model.clone(), Self::build_history(cx));
+        let mut request =
+            ChatCompletionRequest::new(cx.model().to_string(), Self::build_history(cx));
 
-        let response = self
+        let tools = cx.tools();
+        if !tools.is_empty() {
+            let ox_tools: Vec<OxTool> = tools.iter().map(Self::map_tool).collect();
+            request = request.tools(ox_tools);
+        }
+
+        // Serialize to JSON and inject `reasoning_content: ""` on assistant messages
+        // (DeepSeek thinking-mode requirement).
+        let mut request_value =
+            serde_json::to_value(&request).map_err(|e| ResolveError::JsonError(e.to_string()))?;
+        if let Some(messages) = request_value
+            .get_mut("messages")
+            .and_then(|m| m.as_array_mut())
+        {
+            for msg in messages {
+                if msg.get("role").and_then(|r| r.as_str()) == Some("assistant")
+                    && let Some(obj) = msg.as_object_mut()
+                {
+                    obj.entry("reasoning_content")
+                        .or_insert(Value::String(String::new()));
+                }
+            }
+        }
+
+        let response_value = self
             .client
             .chat()
             .completions()
-            .create(request)
+            .create_raw(&request_value)
             .await
             .map_err(Self::map_err)?;
 
-        // Take only the first choice.
-        let choice = response
-            .choices
-            .into_iter()
-            .next()
+        let choice = response_value["choices"]
+            .as_array()
+            .and_then(|choices| choices.first())
             .ok_or(ResolveError::NoResponse)?;
 
         Ok(Self::build_action(choice))
@@ -155,8 +194,8 @@ impl Resolver for OpenAiResolver {
 mod tests {
     use super::*;
 
-    use crate::ai::message::Message;
     use crate::ai::resolver::action::Reason;
+    use crate::ai::resolver::message::Message;
     use crate::ai::resolver::{Context, Resolver};
 
     fn user(content: &str) -> Message {
@@ -188,10 +227,11 @@ mod tests {
 
         let mut resolver = OpenAiResolver::from_env();
 
-        let mut cx = Context::new("deepseek-v4-flash", vec![user("Hello, who are you?")]);
+        let cx = Context::new("deepseek-v4-flash".to_string())
+            .with_messages(vec![user("Hello, who are you?")]);
 
         let action = resolver
-            .resolve(&mut cx)
+            .resolve(&cx)
             .await
             .expect("resolve should succeed for single-turn");
 
@@ -217,18 +257,15 @@ mod tests {
 
         let mut resolver = OpenAiResolver::from_env();
 
-        let mut cx = Context::new(
-            "deepseek-v4-flash",
-            vec![
-                system("You are a helpful math assistant. Answer concisely with just the number."),
-                user("What is 2 + 2?"),
-                assistant("4"),
-                user("Now multiply that result by 3. What do you get?"),
-            ],
-        );
+        let cx = Context::new("deepseek-v4-flash".to_string()).with_messages(vec![
+            system("You are a helpful math assistant. Answer concisely with just the number."),
+            user("What is 2 + 2?"),
+            assistant("4"),
+            user("Now multiply that result by 3. What do you get?"),
+        ]);
 
         let action = resolver
-            .resolve(&mut cx)
+            .resolve(&cx)
             .await
             .expect("resolve should succeed for three-turn");
 

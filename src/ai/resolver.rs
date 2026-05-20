@@ -1,28 +1,13 @@
 pub mod openai;
 
 pub mod action;
+pub mod context;
+pub mod message;
 pub mod tool;
 
-use crate::ai::message::Message;
 use crate::ai::resolver::action::Action;
+use crate::ai::resolver::context::Context;
 use crate::ai::resolver::result::ResolveResult;
-use crate::ai::resolver::tool::Tool;
-
-pub struct Context {
-    pub model: String,
-    pub messages: Vec<Message>,
-    pub tools: Vec<Tool>,
-}
-
-impl Context {
-    pub fn new(model: impl Into<String>, messages: Vec<Message>) -> Self {
-        Self {
-            model: model.into(),
-            messages,
-            tools: Vec::new(),
-        }
-    }
-}
 
 #[async_trait::async_trait]
 pub trait Resolver: Send {

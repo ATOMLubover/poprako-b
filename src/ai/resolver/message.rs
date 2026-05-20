@@ -16,7 +16,8 @@ pub enum Message {
         tool_calls: Option<Vec<ToolCall>>,
         refusal: Option<String>,
     },
+    Tool {
+        tool_call_id: String,
+        content: String,
+    },
 }
-
-#[cfg(test)]
-mod test {}
