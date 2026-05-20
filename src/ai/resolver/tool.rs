@@ -75,7 +75,7 @@ impl Parameters {
             );
             prop_map.insert(
                 "type".to_string(),
-                serde_json::Value::String(prop.type_name().to_string()),
+                serde_json::Value::String(prop.typ().to_string()),
             );
             if let Some(enums) = prop.enum_values() {
                 prop_map.insert("enum".to_string(), enums);
@@ -146,7 +146,7 @@ impl Property {
         }
     }
 
-    fn type_name(&self) -> &str {
+    fn typ(&self) -> &str {
         match self {
             Property::String { .. } => "string",
             Property::Number { .. } => "number",
@@ -187,4 +187,24 @@ pub struct ToolCall {
     pub id: String,
     pub name: String,
     pub arguments: String,
+}
+
+pub trait IToolCall {
+    fn id(&self) -> &str;
+    fn name(&self) -> &str;
+    fn args(&self) -> &str;
+}
+
+impl IToolCall for ToolCall {
+    fn id(&self) -> &str {
+        &self.id
+    }
+
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn args(&self) -> &str {
+        &self.arguments
+    }
 }

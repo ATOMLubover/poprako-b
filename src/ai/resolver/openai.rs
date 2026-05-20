@@ -1,13 +1,12 @@
 // OpenAI Resolver implementation based solely on HTTP.
+pub mod context;
 
 use crate::ai::resolver::action::{Action, Reason};
-use crate::ai::resolver::message::Message;
 use crate::ai::resolver::result::{ResolveError, ResolveResult};
 use crate::ai::resolver::tool::ToolCall;
 use crate::ai::resolver::{Context, Resolver};
 use openai_oxide::types::chat::{
-    ChatCompletionMessageParam, ChatCompletionRequest, FunctionCall, Tool as OxTool,
-    ToolCall as OxToolCall, UserContent,
+    ChatCompletionMessageParam, ChatCompletionRequest, Tool as OxTool,
 };
 use openai_oxide::{ClientConfig, OpenAI, OpenAIError};
 use serde_json::Value;
@@ -16,10 +15,6 @@ use tracing::{Level, instrument};
 pub struct OpenAiResolver {
     client: OpenAI,
 }
-
-// Transform direction:
-// build: OpenAI -> crate
-// map: crate -> OpenAI
 
 impl OpenAiResolver {
     pub fn from_env() -> Self {
@@ -36,56 +31,8 @@ impl OpenAiResolver {
         }
     }
 
-    fn map_message(msg: &Message) -> ChatCompletionMessageParam {
-        match msg {
-            Message::System { name, content } => ChatCompletionMessageParam::System {
-                content: content.clone(),
-                name: name.clone(),
-            },
-            Message::User { name, content } => ChatCompletionMessageParam::User {
-                content: UserContent::Text(content.clone()),
-                name: name.clone(),
-            },
-            Message::Assistant {
-                name,
-                content,
-                tool_calls,
-                refusal,
-            } => ChatCompletionMessageParam::Assistant {
-                content: content.clone(),
-                name: name.clone(),
-                tool_calls: tool_calls
-                    .as_ref()
-                    .map(|tc| tc.iter().map(Self::map_tool_call).collect()),
-                refusal: refusal.clone(),
-            },
-            Message::Tool {
-                tool_call_id,
-                content,
-            } => ChatCompletionMessageParam::Tool {
-                tool_call_id: tool_call_id.clone(),
-                content: content.clone(),
-            },
-        }
-    }
-
-    fn map_tool_call(call: &ToolCall) -> OxToolCall {
-        OxToolCall {
-            id: call.id.clone(),
-            type_: "function".to_string(),
-            function: FunctionCall {
-                name: call.name.clone(),
-                arguments: call.arguments.clone(),
-            },
-        }
-    }
-
     fn map_tool(tool: &crate::ai::resolver::tool::Tool) -> OxTool {
         OxTool::function(&tool.name, &tool.description, tool.parameters.to_value())
-    }
-
-    fn build_history(cx: &Context) -> Vec<ChatCompletionMessageParam> {
-        cx.messages().iter().map(Self::map_message).collect()
     }
 
     fn map_err(err: OpenAIError) -> ResolveError {
@@ -97,10 +44,14 @@ impl OpenAiResolver {
                 code: _,
                 request_id: _,
             } => ResolveError::ApiError { status, message },
-            OpenAIError::RequestError(e) => ResolveError::RequestError(e.to_string()),
-            OpenAIError::JsonError(e) => ResolveError::JsonError(e.to_string()),
+            OpenAIError::RequestError(e) => ResolveError::RequestError {
+                message: e.to_string(),
+            },
+            OpenAIError::JsonError(e) => ResolveError::JsonError {
+                message: e.to_string(),
+            },
             OpenAIError::StreamError(msg) | OpenAIError::InvalidArgument(msg) => {
-                ResolveError::Other(msg)
+                ResolveError::Unknown { message: msg }
             }
         }
     }
@@ -144,10 +95,12 @@ impl OpenAiResolver {
 
 #[async_trait::async_trait]
 impl Resolver for OpenAiResolver {
+    type Message = ChatCompletionMessageParam;
+
     #[instrument(skip(self, cx), fields(model = %cx.model()), level = Level::DEBUG)]
-    async fn resolve(&mut self, cx: &Context) -> ResolveResult<Action> {
+    async fn resolve(&mut self, cx: &Context<Self::Message>) -> ResolveResult<Action> {
         let mut request =
-            ChatCompletionRequest::new(cx.model().to_string(), Self::build_history(cx));
+            ChatCompletionRequest::new(cx.model().to_string(), cx.messages().to_vec());
 
         let tools = cx.tools();
         if !tools.is_empty() {
@@ -158,7 +111,9 @@ impl Resolver for OpenAiResolver {
         // Serialize to JSON and inject `reasoning_content: ""` on assistant messages
         // (DeepSeek thinking-mode requirement).
         let mut request_value =
-            serde_json::to_value(&request).map_err(|e| ResolveError::JsonError(e.to_string()))?;
+            serde_json::to_value(&request).map_err(|e| ResolveError::JsonError {
+                message: e.to_string(),
+            })?;
         if let Some(messages) = request_value
             .get_mut("messages")
             .and_then(|m| m.as_array_mut())
@@ -184,7 +139,7 @@ impl Resolver for OpenAiResolver {
         let choice = response_value["choices"]
             .as_array()
             .and_then(|choices| choices.first())
-            .ok_or(ResolveError::NoResponse)?;
+            .ok_or(ResolveError::InvalidResponse)?;
 
         Ok(Self::build_action(choice))
     }
@@ -195,30 +150,19 @@ mod tests {
     use super::*;
 
     use crate::ai::resolver::action::Reason;
-    use crate::ai::resolver::message::Message;
-    use crate::ai::resolver::{Context, Resolver};
+    use crate::ai::resolver::message::IMessage;
+    use crate::ai::resolver::{Resolver, openai::context::Context};
 
-    fn user(content: &str) -> Message {
-        Message::User {
-            name: None,
-            content: content.into(),
-        }
+    fn user(content: &str) -> ChatCompletionMessageParam {
+        ChatCompletionMessageParam::user(content)
     }
 
-    fn assistant(content: &str) -> Message {
-        Message::Assistant {
-            name: None,
-            content: Some(content.into()),
-            tool_calls: None,
-            refusal: None,
-        }
+    fn assistant(content: &str) -> ChatCompletionMessageParam {
+        ChatCompletionMessageParam::assistant(Some(content), None, None)
     }
 
-    fn system(content: &str) -> Message {
-        Message::System {
-            name: None,
-            content: content.into(),
-        }
+    fn system(content: &str) -> ChatCompletionMessageParam {
+        ChatCompletionMessageParam::system(content)
     }
 
     #[tokio::test]
