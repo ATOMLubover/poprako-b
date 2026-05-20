@@ -2,3 +2,5 @@
 
 .env*
 !.env.sample
+
+/tests/output/

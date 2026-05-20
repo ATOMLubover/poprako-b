@@ -37,7 +37,10 @@ where
     pub async fn run_loop(&mut self) -> Option<String> {
         loop {
             let action = match self.resolver.resolve(&self.context).await {
-                Ok(action) => action,
+                Ok(action) => {
+                    tracing::debug!("resolver produced action: {:?}", action);
+                    action
+                }
                 Err(e) => {
                     tracing::error!("resolve failed: {:?}", e);
                     return None;
@@ -62,16 +65,18 @@ where
                         },
                         Err(e) => Message::Tool {
                             tool_call_id: call.id.clone(),
-                            content: format!("Error: {:?}", e),
+                            content: format!("Tool call error: {:?}", e),
                         },
                     };
+
+                    // Push tool result message.
                     self.context.push_message(tool_msg);
                 }
             }
 
             match reason {
                 Reason::Finish => return content,
-                // ToolCall, Length, Unknown → continue the loop.
+                // FIXME: ToolCall, Length, Unknown → continue the loop.
                 _ => continue,
             }
         }
@@ -115,6 +120,9 @@ mod tests {
     #[tokio::test]
     async fn create_file_in_tests_output() {
         dotenvy::dotenv().ok();
+        let _ = tracing_subscriber::fmt()
+            .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+            .try_init();
 
         let output_dir = PathBuf::from("tests/output");
         let target_file = output_dir.join("hello.txt");
@@ -125,9 +133,11 @@ mod tests {
         // Pre-cleanup in case a previous run left artefacts.
         let _ = std::fs::remove_file(&target_file);
         let _ = std::fs::remove_dir(&output_dir);
+
         std::fs::create_dir_all(&output_dir).expect("should create tests/output");
 
         let resolver = OpenAiResolver::from_env();
+
         let cx = Context::new("deepseek-v4-flash".to_string()).with_messages(vec![
             Message::System {
                 name: None,
@@ -150,6 +160,7 @@ mod tests {
         let result = agent.run_loop().await;
 
         assert!(result.is_some(), "agent should return a final response");
+
         assert!(
             target_file.exists(),
             "expected file at {}",
