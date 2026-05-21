@@ -1,15 +1,17 @@
-use crate::ai::agent::tools::dispatch_tool_call;
+use std::collections::HashMap;
+
+use crate::ai::agent::tool::DynTool;
+use crate::ai::agent::tool::result::ToolOutput;
 use crate::ai::resolver::Resolver;
 use crate::ai::resolver::action::Reason;
 use crate::ai::resolver::context::Context;
 use crate::ai::resolver::message::{IMessage, MessageRef};
 use crate::ai::resolver::tool::IToolCall;
-use crate::ai::resolver::tool::Tool;
 
 pub mod openai;
 
 pub mod prompts;
-pub mod tools;
+pub mod tool;
 
 pub struct Agent<M, R>
 where
@@ -17,6 +19,8 @@ where
     R: Resolver<Message = M> + Send,
 {
     context: Context<M>,
+    tools: HashMap<String, DynTool>,
+
     resolver: R,
 }
 
@@ -28,13 +32,37 @@ where
     pub fn from_context(cx: Context<M>, resolver: R) -> Self {
         Self {
             context: cx,
+            tools: HashMap::new(),
             resolver,
         }
     }
 
-    pub fn with_tools(mut self, tools: Vec<Tool>) -> Self {
-        self.context = self.context.with_tools(tools);
-        self
+    pub fn set_tools(&mut self, tools: Vec<DynTool>) {
+        let mut tool_defs = vec![];
+
+        for tool in tools.into_iter() {
+            let def = tool.defination();
+
+            tool_defs.push(def.clone());
+            self.tools.insert(def.name.clone(), tool);
+        }
+
+        self.context.set_tools(tool_defs);
+    }
+
+    /// Replace all registered tools, returning the old ones.
+    pub fn replace_tools(&mut self, tools: Vec<DynTool>) -> Vec<DynTool> {
+        let old: Vec<DynTool> = self.tools.drain().map(|(_, v)| v).collect();
+
+        let mut defs = Vec::with_capacity(tools.len());
+        for tool in tools {
+            let def = tool.defination();
+            defs.push(def.clone());
+            self.tools.insert(def.name.clone(), tool);
+        }
+        self.context.set_tools(defs);
+
+        old
     }
 
     /// Run the agent loop. Returns the final assistant text response, or `None`
@@ -53,44 +81,47 @@ where
             };
 
             let reason = action.reason.clone();
-            self.context.push_message(action.into());
 
-            let mut tool_messages = Vec::new();
-            let mut finish_content = None;
+            // Extract finish content before action is consumed.
+            let finish_content = if matches!(reason, Reason::Finish) {
+                action.content.clone()
+            } else {
+                None
+            };
 
-            if let Some(last) = self.context.messages().last()
-                && let MessageRef::Assistant {
-                    content,
-                    tool_calls,
-                    ..
-                } = last.message_ref()
-            {
-                if matches!(reason, Reason::Finish) {
-                    finish_content = content.map(str::to_string);
-                }
-
-                if let Some(calls) = tool_calls {
+            // Process tool calls from the local action — no borrow on self.context.
+            let tool_messages: Vec<M> = match &action.tool_calls {
+                None => Vec::new(),
+                Some(calls) => {
+                    let mut messages = Vec::with_capacity(calls.len());
                     for call in calls {
-                        let tool_msg = match dispatch_tool_call(call).await {
-                            Ok(output) => M::from(MessageRef::Tool {
-                                tool_call_id: &output.id,
-                                content: &output.content,
-                            }),
-                            Err(e) => {
-                                let err = format!("Tool call error: {:?}", e);
+                        let message = self
+                            .dispatch_tool_call(call)
+                            .await
+                            .map(|output| {
+                                M::from(MessageRef::Tool {
+                                    tool_call_id: &output.id,
+                                    content: &output.content,
+                                })
+                            })
+                            .unwrap_or_else(|e| {
                                 M::from(MessageRef::Tool {
                                     tool_call_id: call.id(),
-                                    content: &err,
+                                    content: &e,
                                 })
-                            }
-                        };
-                        tool_messages.push(tool_msg);
-                    }
-                }
-            }
+                            });
 
-            for tool_message in tool_messages {
-                self.context.push_message(tool_message);
+                        messages.push(message);
+                    }
+
+                    messages
+                }
+            };
+
+            // Push assistant message and tool results to context together.
+            self.context.push_message(action.into());
+            for msg in tool_messages {
+                self.context.push_message(msg);
             }
 
             match reason {
@@ -100,6 +131,18 @@ where
             }
         }
     }
+
+    async fn dispatch_tool_call(&mut self, call: &M::ToolCall) -> Result<ToolOutput, String> {
+        let tool = match self.tools.get_mut(call.name()) {
+            Some(tool) => tool,
+            None => return Err(format!("tool not found: {}", call.name())),
+        };
+
+        tool.execute(call.args())
+            .await
+            .map(|content| ToolOutput::new(call.id(), content))
+            .map_err(|e| format!("{:?}", e))
+    }
 }
 
 #[cfg(test)]
@@ -108,37 +151,14 @@ mod tests {
 
     use std::path::PathBuf;
 
-    use crate::ai::agent::tools::local::command_line_tool;
+    use crate::ai::agent::tool::local::{CreateFileTool, ReadFileTool};
     use crate::ai::resolver::openai::OpenAiResolver;
+
     use openai_oxide::types::chat::ChatCompletionMessageParam;
     use openai_oxide::types::chat::UserContent;
 
-    /// Drop guard that removes created test artefacts.
-    struct Cleanup {
-        paths: Vec<PathBuf>,
-    }
-
-    impl Cleanup {
-        fn new(paths: Vec<PathBuf>) -> Self {
-            Self { paths }
-        }
-    }
-
-    impl Drop for Cleanup {
-        fn drop(&mut self) {
-            for path in &self.paths {
-                if path.is_file() {
-                    let _ = std::fs::remove_file(path);
-                }
-                if path.is_dir() {
-                    let _ = std::fs::remove_dir(path);
-                }
-            }
-        }
-    }
-
     #[tokio::test]
-    async fn create_file_in_tests_output() {
+    async fn create_file_and_read() {
         dotenvy::dotenv().ok();
         let _ = tracing_subscriber::fmt()
             .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
@@ -147,41 +167,41 @@ mod tests {
         let output_dir = PathBuf::from("tests/output");
         let target_file = output_dir.join("hello.txt");
 
-        // Ensure clean starting state and register final cleanup.
-        let _guard = Cleanup::new(vec![target_file.clone(), output_dir.clone()]);
-
-        // Pre-cleanup in case a previous run left artefacts.
-        let _ = std::fs::remove_file(&target_file);
-        let _ = std::fs::remove_dir(&output_dir);
-
+        // Create the output directory; leftover files from previous runs are
+        // cleaned up by CreateFileTool's Drop when the agent goes out of scope.
         std::fs::create_dir_all(&output_dir).expect("should create tests/output");
 
         let resolver = OpenAiResolver::from_env();
 
-        let cx = Context::new("deepseek-v4-flash".to_string()).with_messages(vec![
+        let mut cx = Context::new("deepseek-v4-flash".to_string());
+        cx.set_messages(vec![
             ChatCompletionMessageParam::System {
                 content:
-                    "You are a helpful assistant. Use the command_line tool to execute shell \
-                     commands. When asked to create a file, use the tool directly - do not ask \
-                     for confirmation."
+                    "You are a helpful assistant. Use the create_file tool to create files and \
+                          the read_file tool to read them. The path parameter is relative to the \
+                          base directory. When asked to create a file, use the tool directly - \
+                          do not ask for confirmation."
                         .to_string(),
                 name: None,
             },
             ChatCompletionMessageParam::User {
-                content: UserContent::Text(format!(
-                    "Create a file at {} with the content 'hello from agent'",
-                    target_file.display()
-                )),
+                content: UserContent::Text(
+                    "Create a file at 'hello.txt' with the content 'hello from agent', \
+                     then read it back to confirm the content."
+                        .to_string(),
+                ),
                 name: None,
             },
         ]);
 
-        let mut agent = Agent::from_context(cx, resolver).with_tools(vec![command_line_tool()]);
+        let mut agent = Agent::from_context(cx, resolver);
+        agent.set_tools(vec![
+            Box::new(CreateFileTool::new(output_dir.clone())),
+            Box::new(ReadFileTool::new(output_dir)),
+        ]);
 
         let result = agent.run_loop().await;
-
         assert!(result.is_some(), "agent should return a final response");
-
         assert!(
             target_file.exists(),
             "expected file at {}",
@@ -193,5 +213,9 @@ mod tests {
             contents.contains("hello from agent"),
             "file should contain 'hello from agent', got: {contents}"
         );
+
+        // Pop CreateFileTool out before agent drops, then clean up the file directly.
+        let _old_tools = agent.replace_tools(vec![]);
+        let _ = std::fs::remove_file(&target_file);
     }
 }

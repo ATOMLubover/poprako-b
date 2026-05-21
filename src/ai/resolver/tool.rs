@@ -1,15 +1,15 @@
 use std::collections::HashMap;
 
-#[derive(Debug, Default)]
-pub struct Tool {
+#[derive(Debug, Clone, Default)]
+pub struct ToolDef {
     pub name: String,
     pub description: String,
-    pub parameters: Parameters,
+    pub parameters: ParamDef,
     pub strict: Option<bool>,
 }
 
-impl Tool {
-    pub fn new(name: &str, description: &str, parameters: Parameters) -> Self {
+impl ToolDef {
+    pub fn new(name: &str, description: &str, parameters: ParamDef) -> Self {
         Self {
             name: name.to_string(),
             description: description.to_string(),
@@ -24,15 +24,15 @@ impl Tool {
     }
 }
 
-#[derive(Debug)]
-pub struct Parameters {
+#[derive(Debug, Clone)]
+pub struct ParamDef {
     pub r#type: String,
-    pub properties: HashMap<String, Property>,
+    pub properties: HashMap<String, PropDef>,
     pub required: Option<Vec<String>>,
     pub additional_properties: Option<bool>,
 }
 
-impl Parameters {
+impl ParamDef {
     pub fn new(r#type: &str) -> Self {
         Self {
             r#type: r#type.to_string(),
@@ -46,7 +46,7 @@ impl Parameters {
     ///
     /// Each entry is `(name, property)`. Use [`with_required`](Self::with_required)
     /// to mark specific properties as required.
-    pub fn with_properties(mut self, properties: Vec<(&str, Property)>) -> Self {
+    pub fn with_properties(mut self, properties: Vec<(&str, PropDef)>) -> Self {
         properties.into_iter().for_each(|(name, prop)| {
             self.properties.insert(name.to_string(), prop);
         });
@@ -103,7 +103,7 @@ impl Parameters {
     }
 }
 
-impl Default for Parameters {
+impl Default for ParamDef {
     fn default() -> Self {
         Self {
             r#type: "object".to_string(),
@@ -114,8 +114,8 @@ impl Default for Parameters {
     }
 }
 
-#[derive(Debug)]
-pub enum Property {
+#[derive(Debug, Clone)]
+pub enum PropDef {
     String {
         description: String,
         r#enum: Option<Vec<String>>,
@@ -135,37 +135,37 @@ pub enum Property {
     },
 }
 
-impl Property {
+impl PropDef {
     fn description(&self) -> &str {
         match self {
-            Property::String { description, .. }
-            | Property::Number { description, .. }
-            | Property::Boolean { description }
-            | Property::Array { description }
-            | Property::Object { description } => description,
+            PropDef::String { description, .. }
+            | PropDef::Number { description, .. }
+            | PropDef::Boolean { description }
+            | PropDef::Array { description }
+            | PropDef::Object { description } => description,
         }
     }
 
     fn typ(&self) -> &str {
         match self {
-            Property::String { .. } => "string",
-            Property::Number { .. } => "number",
-            Property::Boolean { .. } => "boolean",
-            Property::Array { .. } => "array",
-            Property::Object { .. } => "object",
+            PropDef::String { .. } => "string",
+            PropDef::Number { .. } => "number",
+            PropDef::Boolean { .. } => "boolean",
+            PropDef::Array { .. } => "array",
+            PropDef::Object { .. } => "object",
         }
     }
 
     fn enum_values(&self) -> Option<serde_json::Value> {
         match self {
-            Property::String { r#enum, .. } => r#enum.as_ref().map(|v| {
+            PropDef::String { r#enum, .. } => r#enum.as_ref().map(|v| {
                 serde_json::Value::Array(
                     v.iter()
                         .map(|e| serde_json::Value::String(e.clone()))
                         .collect(),
                 )
             }),
-            Property::Number { r#enum, .. } => r#enum.as_ref().map(|v| {
+            PropDef::Number { r#enum, .. } => r#enum.as_ref().map(|v| {
                 serde_json::Value::Array(
                     v.iter()
                         .map(|e| {
@@ -182,29 +182,9 @@ impl Property {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct ToolCall {
-    pub id: String,
-    pub name: String,
-    pub arguments: String,
-}
-
+/// IToolCall represents a call to a tool, with its name and arguments.
 pub trait IToolCall {
     fn id(&self) -> &str;
     fn name(&self) -> &str;
     fn args(&self) -> &str;
-}
-
-impl IToolCall for ToolCall {
-    fn id(&self) -> &str {
-        &self.id
-    }
-
-    fn name(&self) -> &str {
-        &self.name
-    }
-
-    fn args(&self) -> &str {
-        &self.arguments
-    }
 }

@@ -1,5 +1,5 @@
 use crate::ai::resolver::message::IMessage;
-use crate::ai::resolver::tool::Tool;
+use crate::ai::resolver::tool::ToolDef;
 
 /// Context for the resolver, containing the conversation history and available tools.
 /// It **owns** all messages and tools, so Agent can mutate the context by pushing or deleting
@@ -10,7 +10,7 @@ where
 {
     model: String,
     messages: Vec<M>,
-    tools: Vec<Tool>,
+    tools: Vec<ToolDef>,
 }
 
 impl<M> Context<M>
@@ -37,22 +37,12 @@ where
         self.messages = messages;
     }
 
-    pub fn with_messages(mut self, messages: Vec<M>) -> Self {
-        self.messages = messages;
-        self
-    }
-
-    pub fn tools(&self) -> &[Tool] {
+    pub fn tools(&self) -> &[ToolDef] {
         &self.tools
     }
 
-    pub fn set_tools(&mut self, tools: Vec<Tool>) {
+    pub fn set_tools(&mut self, tools: Vec<ToolDef>) {
         self.tools = tools;
-    }
-
-    pub fn with_tools(mut self, tools: Vec<Tool>) -> Self {
-        self.tools = tools;
-        self
     }
 
     pub fn model(&self) -> &str {
@@ -61,10 +51,5 @@ where
 
     pub fn set_model(&mut self, model: String) {
         self.model = model;
-    }
-
-    pub fn with_model(mut self, model: String) -> Self {
-        self.model = model;
-        self
     }
 }
