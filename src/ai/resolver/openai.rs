@@ -1,5 +1,7 @@
 // OpenAI Resolver implementation based solely on HTTP.
 pub mod context;
+pub mod message;
+pub mod tool;
 
 use crate::ai::resolver::action::{Action, Reason};
 use crate::ai::resolver::result::{ResolveError, ResolveResult};
