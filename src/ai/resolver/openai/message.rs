@@ -1,9 +1,7 @@
-use openai_oxide::types::chat::{
-    ChatCompletionMessageParam, ToolCall as OxToolCall, UserContent,
-};
+use openai_oxide::types::chat::{ChatCompletionMessageParam, ToolCall as OxToolCall, UserContent};
 
 use crate::ai::resolver::action::Action;
-use crate::ai::resolver::message::{IMessage, Message};
+use crate::ai::resolver::message::{IMessage, MessageRef};
 
 pub trait OpenAiMessage: IMessage<ToolCall = OxToolCall> {}
 
@@ -22,46 +20,44 @@ impl From<Action> for ChatCompletionMessageParam {
     }
 }
 
+impl<'a> From<MessageRef<'a, OxToolCall>> for ChatCompletionMessageParam {
+    fn from(value: MessageRef<'a, OxToolCall>) -> Self {
+        match value {
+            MessageRef::System { content } => ChatCompletionMessageParam::System {
+                content: content.to_string(),
+                name: None,
+            },
+            MessageRef::User { content } => ChatCompletionMessageParam::User {
+                content: UserContent::Text(content.to_string()),
+                name: None,
+            },
+            MessageRef::Assistant {
+                content,
+                tool_calls,
+                refusal,
+            } => ChatCompletionMessageParam::Assistant {
+                content: content.map(str::to_string),
+                name: None,
+                tool_calls: tool_calls.map(|calls| calls.to_vec()),
+                refusal: refusal.map(str::to_string),
+            },
+            MessageRef::Tool {
+                tool_call_id,
+                content,
+            } => ChatCompletionMessageParam::Tool {
+                tool_call_id: tool_call_id.to_string(),
+                content: content.to_string(),
+            },
+        }
+    }
+}
+
 impl IMessage for ChatCompletionMessageParam {
     type ToolCall = OxToolCall;
 
-    fn system(content: &str) -> Self {
-        ChatCompletionMessageParam::System {
-            content: content.to_string(),
-            name: None,
-        }
-    }
-
-    fn user(content: &str) -> Self {
-        ChatCompletionMessageParam::User {
-            content: UserContent::Text(content.to_string()),
-            name: None,
-        }
-    }
-
-    fn assistant(
-        content: Option<&str>,
-        tool_calls: Option<&[Self::ToolCall]>,
-        refusal: Option<&str>,
-    ) -> Self {
-        ChatCompletionMessageParam::Assistant {
-            content: content.map(str::to_string),
-            name: None,
-            tool_calls: tool_calls.map(|calls| calls.to_vec()),
-            refusal: refusal.map(str::to_string),
-        }
-    }
-
-    fn tool(tool_call_id: &str, content: &str) -> Self {
-        ChatCompletionMessageParam::Tool {
-            tool_call_id: tool_call_id.to_string(),
-            content: content.to_string(),
-        }
-    }
-
-    fn message(&self) -> Message<'_, Self::ToolCall> {
+    fn message_ref(&self) -> MessageRef<'_, Self::ToolCall> {
         match self {
-            ChatCompletionMessageParam::System { content, .. } => Message::System {
+            ChatCompletionMessageParam::System { content, .. } => MessageRef::System {
                 content: content.as_str(),
             },
             ChatCompletionMessageParam::User { content, .. } => {
@@ -70,14 +66,14 @@ impl IMessage for ChatCompletionMessageParam {
                     _ => "",
                 };
 
-                Message::User { content }
+                MessageRef::User { content }
             }
             ChatCompletionMessageParam::Assistant {
                 content,
                 tool_calls,
                 refusal,
                 ..
-            } => Message::Assistant {
+            } => MessageRef::Assistant {
                 content: content.as_deref(),
                 tool_calls: tool_calls.as_deref(),
                 refusal: refusal.as_deref(),
@@ -85,11 +81,11 @@ impl IMessage for ChatCompletionMessageParam {
             ChatCompletionMessageParam::Tool {
                 tool_call_id,
                 content,
-            } => Message::Tool {
+            } => MessageRef::Tool {
                 tool_call_id: tool_call_id.as_str(),
                 content: content.as_str(),
             },
-            _ => Message::System { content: "" },
+            _ => MessageRef::System { content: "" },
         }
     }
 }

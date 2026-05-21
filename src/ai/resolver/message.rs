@@ -1,7 +1,7 @@
 use crate::ai::resolver::{action::Action, tool::IToolCall};
 
 #[derive(Debug)]
-pub enum Message<'a, C>
+pub enum MessageRef<'a, C>
 where
     C: IToolCall,
 {
@@ -22,20 +22,10 @@ where
     },
 }
 
-pub trait IMessage: From<Action> {
+pub trait IMessage: From<Action> + for<'a> From<MessageRef<'a, Self::ToolCall>> {
+    // ToolCall will be specified by the implementor, as we do not have to
+    // make a generic constraint on the IMessage trait itself.
     type ToolCall: IToolCall;
 
-    fn system(content: &str) -> Self;
-
-    fn user(content: &str) -> Self;
-
-    fn assistant(
-        content: Option<&str>,
-        tool_calls: Option<&[Self::ToolCall]>,
-        refusal: Option<&str>,
-    ) -> Self;
-
-    fn tool(tool_call_id: &str, content: &str) -> Self;
-
-    fn message(&self) -> Message<'_, Self::ToolCall>;
+    fn message_ref(&self) -> MessageRef<'_, Self::ToolCall>;
 }

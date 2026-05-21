@@ -151,20 +151,31 @@ impl Resolver for OpenAiResolver {
 mod tests {
     use super::*;
 
+    use crate::ai::resolver::Resolver;
     use crate::ai::resolver::action::Reason;
-    use crate::ai::resolver::message::IMessage;
-    use crate::ai::resolver::{Resolver, openai::context::Context};
+    use crate::ai::resolver::openai::context::Context;
 
     fn user(content: &str) -> ChatCompletionMessageParam {
-        ChatCompletionMessageParam::user(content)
+        ChatCompletionMessageParam::User {
+            content: openai_oxide::types::chat::UserContent::Text(content.to_string()),
+            name: None,
+        }
     }
 
     fn assistant(content: &str) -> ChatCompletionMessageParam {
-        ChatCompletionMessageParam::assistant(Some(content), None, None)
+        ChatCompletionMessageParam::Assistant {
+            content: Some(content.to_string()),
+            name: None,
+            tool_calls: None,
+            refusal: None,
+        }
     }
 
     fn system(content: &str) -> ChatCompletionMessageParam {
-        ChatCompletionMessageParam::system(content)
+        ChatCompletionMessageParam::System {
+            content: content.to_string(),
+            name: None,
+        }
     }
 
     #[tokio::test]
