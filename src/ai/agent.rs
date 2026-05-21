@@ -2,25 +2,30 @@ use crate::ai::agent::tools::dispatch_tool_call;
 use crate::ai::resolver::Resolver;
 use crate::ai::resolver::action::Reason;
 use crate::ai::resolver::context::Context;
-use crate::ai::resolver::message::Message;
+use crate::ai::resolver::message::{IMessage, MessageRef};
+use crate::ai::resolver::tool::IToolCall;
 use crate::ai::resolver::tool::Tool;
+
+pub mod openai;
 
 pub mod prompts;
 pub mod tools;
 
-pub struct Agent<R>
+pub struct Agent<M, R>
 where
-    R: Resolver + Send,
+    M: IMessage + 'static,
+    R: Resolver<Message = M> + Send,
 {
-    context: Context,
+    context: Context<M>,
     resolver: R,
 }
 
-impl<R> Agent<R>
+impl<M, R> Agent<M, R>
 where
-    R: Resolver + Send,
+    M: IMessage + 'static,
+    R: Resolver<Message = M> + Send,
 {
-    pub fn from_context(cx: Context, resolver: R) -> Self {
+    pub fn from_context(cx: Context<M>, resolver: R) -> Self {
         Self {
             context: cx,
             resolver,
@@ -47,35 +52,49 @@ where
                 }
             };
 
-            // Extract fields before `action` is moved into a Message.
             let reason = action.reason.clone();
-            let content = action.content.clone();
-            let tool_calls = action.tool_calls.clone();
-
-            // Push the assistant message (with tool_calls if any).
             self.context.push_message(action.into());
 
-            // Dispatch tool calls and feed results back as Tool messages.
-            if let Some(calls) = tool_calls {
-                for call in &calls {
-                    let tool_msg = match dispatch_tool_call(call).await {
-                        Ok(output) => Message::Tool {
-                            tool_call_id: output.id,
-                            content: output.content,
-                        },
-                        Err(e) => Message::Tool {
-                            tool_call_id: call.id.clone(),
-                            content: format!("Tool call error: {:?}", e),
-                        },
-                    };
+            let mut tool_messages = Vec::new();
+            let mut finish_content = None;
 
-                    // Push tool result message.
-                    self.context.push_message(tool_msg);
+            if let Some(last) = self.context.messages().last()
+                && let MessageRef::Assistant {
+                    content,
+                    tool_calls,
+                    ..
+                } = last.message_ref()
+            {
+                if matches!(reason, Reason::Finish) {
+                    finish_content = content.map(str::to_string);
+                }
+
+                if let Some(calls) = tool_calls {
+                    for call in calls {
+                        let tool_msg = match dispatch_tool_call(call).await {
+                            Ok(output) => M::from(MessageRef::Tool {
+                                tool_call_id: &output.id,
+                                content: &output.content,
+                            }),
+                            Err(e) => {
+                                let err = format!("Tool call error: {:?}", e);
+                                M::from(MessageRef::Tool {
+                                    tool_call_id: call.id(),
+                                    content: &err,
+                                })
+                            }
+                        };
+                        tool_messages.push(tool_msg);
+                    }
                 }
             }
 
+            for tool_message in tool_messages {
+                self.context.push_message(tool_message);
+            }
+
             match reason {
-                Reason::Finish => return content,
+                Reason::Finish => return finish_content,
                 // FIXME: ToolCall, Length, Unknown → continue the loop.
                 _ => continue,
             }
@@ -90,8 +109,9 @@ mod tests {
     use std::path::PathBuf;
 
     use crate::ai::agent::tools::local::command_line_tool;
-    use crate::ai::resolver::message::Message;
     use crate::ai::resolver::openai::OpenAiResolver;
+    use openai_oxide::types::chat::ChatCompletionMessageParam;
+    use openai_oxide::types::chat::UserContent;
 
     /// Drop guard that removes created test artefacts.
     struct Cleanup {
@@ -139,19 +159,20 @@ mod tests {
         let resolver = OpenAiResolver::from_env();
 
         let cx = Context::new("deepseek-v4-flash".to_string()).with_messages(vec![
-            Message::System {
-                name: None,
-                content: "You are a helpful assistant. Use the command_line tool to execute shell \
-                     commands. When asked to create a file, use the tool directly — do not ask \
+            ChatCompletionMessageParam::System {
+                content:
+                    "You are a helpful assistant. Use the command_line tool to execute shell \
+                     commands. When asked to create a file, use the tool directly - do not ask \
                      for confirmation."
-                    .to_string(),
-            },
-            Message::User {
+                        .to_string(),
                 name: None,
-                content: format!(
+            },
+            ChatCompletionMessageParam::User {
+                content: UserContent::Text(format!(
                     "Create a file at {} with the content 'hello from agent'",
                     target_file.display()
-                ),
+                )),
+                name: None,
             },
         ]);
 

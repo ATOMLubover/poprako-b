@@ -1,6 +1,6 @@
 use crate::ai::agent::tools::local::{COMMAND_LINE_TOOL, run_command_line};
 use crate::ai::agent::tools::result::DispatchResult;
-use crate::ai::resolver::tool::ToolCall;
+use crate::ai::resolver::tool::IToolCall;
 
 pub mod local;
 
@@ -10,15 +10,18 @@ pub struct ToolOutput {
     pub content: String,
 }
 
-pub async fn dispatch_tool_call(call: &ToolCall) -> DispatchResult {
-    match call.name.as_str() {
+pub async fn dispatch_tool_call<C>(call: &C) -> DispatchResult
+where
+    C: IToolCall,
+{
+    match call.name() {
         COMMAND_LINE_TOOL => Ok(ToolOutput {
-            id: call.id.clone(),
-            content: run_command_line(&call.arguments).await?,
+            id: call.id().to_string(),
+            content: run_command_line(call.args()).await?,
         }),
         _ => Err(result::ToolError::Fail(format!(
             "Unknown tool: {}",
-            call.name
+            call.name()
         ))),
     }
 }
