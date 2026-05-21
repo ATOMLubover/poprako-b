@@ -14,7 +14,10 @@ use crate::ai::resolver::result::ResolveResult;
 pub trait Resolver: Send {
     type Message: IMessage + 'static;
 
-    async fn resolve(&mut self, cx: &Context<Self::Message>) -> ResolveResult<Action>;
+    async fn resolve(
+        &mut self,
+        cx: &Context<Self::Message>,
+    ) -> ResolveResult<Action<<Self::Message as IMessage>::ToolCall>>;
 }
 
 pub mod result {

@@ -5,11 +5,9 @@ use crate::ai::resolver::message::{IMessage, MessageRef};
 
 pub trait OpenAiMessage: IMessage<ToolCall = OxToolCall> {}
 
-impl From<Action> for ChatCompletionMessageParam {
-    fn from(value: Action) -> Self {
-        let tool_calls = value
-            .tool_calls
-            .map(|calls| calls.into_iter().map(Into::into).collect());
+impl From<Action<OxToolCall>> for ChatCompletionMessageParam {
+    fn from(value: Action<OxToolCall>) -> Self {
+        let tool_calls = value.tool_calls.map(|calls| calls.into_iter().collect());
 
         ChatCompletionMessageParam::Assistant {
             content: value.content,
@@ -31,7 +29,7 @@ impl<'a> From<MessageRef<'a, OxToolCall>> for ChatCompletionMessageParam {
                 content: UserContent::Text(content.to_string()),
                 name: None,
             },
-            MessageRef::Assistant {
+            MessageRef::Assist {
                 content,
                 tool_calls,
                 refusal,
@@ -73,7 +71,7 @@ impl IMessage for ChatCompletionMessageParam {
                 tool_calls,
                 refusal,
                 ..
-            } => MessageRef::Assistant {
+            } => MessageRef::Assist {
                 content: content.as_deref(),
                 tool_calls: tool_calls.as_deref(),
                 refusal: refusal.as_deref(),
