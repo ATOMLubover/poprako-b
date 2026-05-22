@@ -5,10 +5,10 @@ pub mod tool;
 
 use crate::ai::resolver::action::{Action, Reason};
 use crate::ai::resolver::result::{ResolveError, ResolveResult};
-use crate::ai::resolver::tool::ToolCall;
-use crate::ai::resolver::{Context, Resolver};
+use crate::ai::resolver::{Context, IResolver};
 use openai_oxide::types::chat::{
-    ChatCompletionMessageParam, ChatCompletionRequest, Tool as OxTool,
+    ChatCompletionMessageParam, ChatCompletionRequest, FunctionCall, Tool as OxTool,
+    ToolCall as OxToolCall,
 };
 use openai_oxide::{ClientConfig, OpenAI, OpenAIError};
 use serde_json::Value;
@@ -33,23 +33,19 @@ impl OpenAiResolver {
         }
     }
 
-    fn map_tool(tool: &crate::ai::resolver::tool::Tool) -> OxTool {
+    fn map_tool(tool: &crate::ai::resolver::tool::ToolDef) -> OxTool {
         OxTool::function(&tool.name, &tool.description, tool.parameters.to_value())
     }
 
     fn map_err(err: OpenAIError) -> ResolveError {
         match err {
             OpenAIError::ApiError {
-                status,
-                message,
-                type_: _,
-                code: _,
-                request_id: _,
-            } => ResolveError::ApiError { status, message },
-            OpenAIError::RequestError(e) => ResolveError::RequestError {
+                status, message, ..
+            } => ResolveError::Api { status, message },
+            OpenAIError::RequestError(e) => ResolveError::Network {
                 message: e.to_string(),
             },
-            OpenAIError::JsonError(e) => ResolveError::JsonError {
+            OpenAIError::JsonError(e) => ResolveError::JsonSerde {
                 message: e.to_string(),
             },
             OpenAIError::StreamError(msg) | OpenAIError::InvalidArgument(msg) => {
@@ -58,7 +54,7 @@ impl OpenAiResolver {
         }
     }
 
-    fn build_action(choice: &Value) -> Action {
+    fn build_action(choice: &Value) -> Action<OxToolCall> {
         let finish_reason = choice["finish_reason"].as_str().unwrap_or("");
 
         let reason = match finish_reason {
@@ -75,13 +71,16 @@ impl OpenAiResolver {
 
         let tool_calls = msg["tool_calls"].as_array().map(|tc| {
             tc.iter()
-                .map(|tc| ToolCall {
+                .map(|tc| OxToolCall {
                     id: tc["id"].as_str().unwrap_or("").to_string(),
-                    name: tc["function"]["name"].as_str().unwrap_or("").to_string(),
-                    arguments: tc["function"]["arguments"]
-                        .as_str()
-                        .unwrap_or("{}")
-                        .to_string(),
+                    type_: "function".to_string(),
+                    function: FunctionCall {
+                        name: tc["function"]["name"].as_str().unwrap_or("").to_string(),
+                        arguments: tc["function"]["arguments"]
+                            .as_str()
+                            .unwrap_or("{}")
+                            .to_string(),
+                    },
                 })
                 .collect()
         });
@@ -96,11 +95,11 @@ impl OpenAiResolver {
 }
 
 #[async_trait::async_trait]
-impl Resolver for OpenAiResolver {
+impl IResolver for OpenAiResolver {
     type Message = ChatCompletionMessageParam;
 
     #[instrument(skip(self, cx), fields(model = %cx.model()), level = Level::DEBUG)]
-    async fn resolve(&mut self, cx: &Context<Self::Message>) -> ResolveResult<Action> {
+    async fn resolve(&mut self, cx: &Context<Self::Message>) -> ResolveResult<Action<OxToolCall>> {
         let mut request =
             ChatCompletionRequest::new(cx.model().to_string(), cx.messages().to_vec());
 
@@ -113,7 +112,7 @@ impl Resolver for OpenAiResolver {
         // Serialize to JSON and inject `reasoning_content: ""` on assistant messages
         // (DeepSeek thinking-mode requirement).
         let mut request_value =
-            serde_json::to_value(&request).map_err(|e| ResolveError::JsonError {
+            serde_json::to_value(&request).map_err(|e| ResolveError::JsonSerde {
                 message: e.to_string(),
             })?;
         if let Some(messages) = request_value
@@ -141,7 +140,7 @@ impl Resolver for OpenAiResolver {
         let choice = response_value["choices"]
             .as_array()
             .and_then(|choices| choices.first())
-            .ok_or(ResolveError::InvalidResponse)?;
+            .ok_or(ResolveError::NoChoice)?;
 
         Ok(Self::build_action(choice))
     }
@@ -151,7 +150,7 @@ impl Resolver for OpenAiResolver {
 mod tests {
     use super::*;
 
-    use crate::ai::resolver::Resolver;
+    use crate::ai::resolver::IResolver;
     use crate::ai::resolver::action::Reason;
     use crate::ai::resolver::openai::context::Context;
 
@@ -184,8 +183,8 @@ mod tests {
 
         let mut resolver = OpenAiResolver::from_env();
 
-        let cx = Context::new("deepseek-v4-flash".to_string())
-            .with_messages(vec![user("Hello, who are you?")]);
+        let mut cx = Context::new("deepseek-v4-flash".to_string());
+        cx.set_messages(vec![user("Hello, who are you?")]);
 
         let action = resolver
             .resolve(&cx)
@@ -214,7 +213,8 @@ mod tests {
 
         let mut resolver = OpenAiResolver::from_env();
 
-        let cx = Context::new("deepseek-v4-flash".to_string()).with_messages(vec![
+        let mut cx = Context::new("deepseek-v4-flash".to_string());
+        cx.set_messages(vec![
             system("You are a helpful math assistant. Answer concisely with just the number."),
             user("What is 2 + 2?"),
             assistant("4"),

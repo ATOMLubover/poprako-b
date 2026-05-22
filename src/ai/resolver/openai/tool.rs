@@ -1,8 +1,8 @@
-use openai_oxide::types::chat::{FunctionCall, ToolCall as OxToolCall};
+use openai_oxide::types::chat::ToolCall as OxToolCall;
 
-use crate::ai::resolver::tool::{IToolCall, ToolCall};
+use crate::ai::resolver::tool::IToolCall;
 
-pub trait OpenAiToolCall: IToolCall {}
+pub trait IOpenAiToolCall: IToolCall {}
 
 impl IToolCall for OxToolCall {
     fn id(&self) -> &str {
@@ -18,17 +18,4 @@ impl IToolCall for OxToolCall {
     }
 }
 
-impl OpenAiToolCall for OxToolCall {}
-
-impl From<ToolCall> for OxToolCall {
-    fn from(value: ToolCall) -> Self {
-        Self {
-            id: value.id,
-            type_: "function".to_string(),
-            function: FunctionCall {
-                name: value.name,
-                arguments: value.arguments,
-            },
-        }
-    }
-}
+impl IOpenAiToolCall for OxToolCall {}
