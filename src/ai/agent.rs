@@ -1,3 +1,8 @@
+pub mod openai;
+
+pub mod prompts;
+pub mod tool;
+
 use std::collections::HashMap;
 
 use crate::ai::agent::tool::DynTool;
@@ -7,11 +12,6 @@ use crate::ai::resolver::action::Reason;
 use crate::ai::resolver::context::Context;
 use crate::ai::resolver::message::{IMessage, MessageRef};
 use crate::ai::resolver::tool::IToolCall;
-
-pub mod openai;
-
-pub mod prompts;
-pub mod tool;
 
 pub struct Agent<M, R>
 where
@@ -41,7 +41,7 @@ where
         let mut tool_defs = vec![];
 
         for tool in tools.into_iter() {
-            let def = tool.defination();
+            let def = tool.def();
 
             tool_defs.push(def.clone());
             self.tools.insert(def.name.clone(), tool);
@@ -56,7 +56,7 @@ where
 
         let mut defs = Vec::with_capacity(tools.len());
         for tool in tools {
-            let def = tool.defination();
+            let def = tool.def();
             defs.push(def.clone());
             self.tools.insert(def.name.clone(), tool);
         }
@@ -71,7 +71,7 @@ where
         loop {
             let action = match self.resolver.resolve(&self.context).await {
                 Ok(action) => {
-                    tracing::debug!("resolver produced action: {:?}", action);
+                    tracing::info!("resolver produced action: {:?}", action);
                     action
                 }
                 Err(e) => {
@@ -90,7 +90,7 @@ where
             };
 
             // Process tool calls from the local action — no borrow on self.context.
-            let tool_messages: Vec<M> = match &action.tool_calls {
+            let tool_messages = match &action.tool_calls {
                 None => Vec::new(),
                 Some(calls) => {
                     let mut messages = Vec::with_capacity(calls.len());
@@ -138,7 +138,7 @@ where
             None => return Err(format!("tool not found: {}", call.name())),
         };
 
-        tool.execute(call.args())
+        tool.exec(call.args())
             .await
             .map(|content| ToolOutput::new(call.id(), content))
             .map_err(|e| format!("{:?}", e))
@@ -151,7 +151,7 @@ mod tests {
 
     use std::path::PathBuf;
 
-    use crate::ai::agent::tool::local::{CreateFileTool, ReadFileTool};
+    use crate::ai::agent::tool::local::fs::{CreateFileTool, ReadFileTool};
     use crate::ai::resolver::openai::OpenAiResolver;
 
     use openai_oxide::types::chat::ChatCompletionMessageParam;

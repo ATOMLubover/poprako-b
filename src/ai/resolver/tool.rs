@@ -63,7 +63,7 @@ impl ParamDef {
             let mut prop_map = serde_json::Map::new();
             prop_map.insert(
                 "description".to_string(),
-                serde_json::Value::String(prop.description().to_string()),
+                serde_json::Value::String(prop.desc().to_string()),
             );
             prop_map.insert(
                 "type".to_string(),
@@ -161,7 +161,7 @@ pub enum PropDef {
 }
 
 impl PropDef {
-    fn description(&self) -> &str {
+    fn desc(&self) -> &str {
         match self {
             PropDef::String { desc, .. }
             | PropDef::Number { desc, .. }
