@@ -18,4 +18,4 @@ impl IToolCall for OxToolCall {
     }
 }
 
-impl OpenAiToolCall for OxToolCall {}
+impl IOpenAiToolCall for OxToolCall {}

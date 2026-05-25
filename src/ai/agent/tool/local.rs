@@ -39,7 +39,7 @@ impl ITool for CreateFileTool {
                 (
                     "path",
                     PropDef::String {
-                        description:
+                        desc:
                             "Relative path of the file to create, relative to the base directory."
                                 .to_string(),
                         r#enum: None,
@@ -48,7 +48,7 @@ impl ITool for CreateFileTool {
                 (
                     "content",
                     PropDef::String {
-                        description: "The content to write into the file.".to_string(),
+                        desc: "The content to write into the file.".to_string(),
                         r#enum: None,
                     },
                 ),
@@ -131,7 +131,7 @@ impl ITool for ReadFileTool {
             .with_properties(vec![(
                 "path",
                 PropDef::String {
-                    description:
+                    desc:
                         "Relative path of the file to read, relative to the base directory."
                             .to_string(),
                     r#enum: None,
@@ -177,8 +177,8 @@ mod tests {
 
         assert_eq!(def.name, "create_file");
         assert_eq!(def.strict, Some(true));
-        assert!(def.parameters.properties.contains_key("path"));
-        assert!(def.parameters.properties.contains_key("content"));
+        assert!(def.parameters.props.contains_key("path"));
+        assert!(def.parameters.props.contains_key("content"));
         assert_eq!(
             def.parameters.required,
             Some(vec!["path".to_string(), "content".to_string()])
@@ -240,7 +240,7 @@ mod tests {
 
         assert_eq!(def.name, "read_file");
         assert_eq!(def.strict, Some(true));
-        assert!(def.parameters.properties.contains_key("path"));
+        assert!(def.parameters.props.contains_key("path"));
         assert_eq!(def.parameters.required, Some(vec!["path".to_string()]));
     }
 

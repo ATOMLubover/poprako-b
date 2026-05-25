@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::ai::agent::tool::DynTool;
 use crate::ai::agent::tool::result::ToolOutput;
-use crate::ai::resolver::Resolver;
+use crate::ai::resolver::IResolver;
 use crate::ai::resolver::action::Reason;
 use crate::ai::resolver::context::Context;
 use crate::ai::resolver::message::{IMessage, MessageRef};
