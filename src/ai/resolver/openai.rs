@@ -45,7 +45,7 @@ impl OpenAiResolver {
             OpenAIError::RequestError(e) => ResolveError::RequestError {
                 message: e.to_string(),
             },
-            OpenAIError::JsonError(e) => ResolveError::JsonError {
+            OpenAIError::JsonError(e) => ResolveError::JsonSerde {
                 message: e.to_string(),
             },
             OpenAIError::StreamError(msg) | OpenAIError::InvalidArgument(msg) => {
@@ -95,7 +95,7 @@ impl OpenAiResolver {
 }
 
 #[async_trait::async_trait]
-impl Resolver for OpenAiResolver {
+impl IResolver for OpenAiResolver {
     type Message = ChatCompletionMessageParam;
 
     #[instrument(skip(self, cx), fields(model = %cx.model()), level = Level::DEBUG)]
@@ -112,7 +112,7 @@ impl Resolver for OpenAiResolver {
         // Serialize to JSON and inject `reasoning_content: ""` on assistant messages
         // (DeepSeek thinking-mode requirement).
         let mut request_value =
-            serde_json::to_value(&request).map_err(|e| ResolveError::JsonError {
+            serde_json::to_value(&request).map_err(|e| ResolveError::JsonSerde {
                 message: e.to_string(),
             })?;
         if let Some(messages) = request_value
@@ -140,7 +140,7 @@ impl Resolver for OpenAiResolver {
         let choice = response_value["choices"]
             .as_array()
             .and_then(|choices| choices.first())
-            .ok_or(ResolveError::InvalidResponse)?;
+            .ok_or(ResolveError::NoChoice)?;
 
         Ok(Self::build_action(choice))
     }
@@ -150,7 +150,7 @@ impl Resolver for OpenAiResolver {
 mod tests {
     use super::*;
 
-    use crate::ai::resolver::Resolver;
+    use crate::ai::resolver::IResolver;
     use crate::ai::resolver::action::Reason;
     use crate::ai::resolver::openai::context::Context;
 

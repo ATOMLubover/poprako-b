@@ -2,7 +2,7 @@ use openai_oxide::types::chat::ToolCall as OxToolCall;
 
 use crate::ai::resolver::tool::IToolCall;
 
-pub trait OpenAiToolCall: IToolCall {}
+pub trait IOpenAiToolCall: IToolCall {}
 
 impl IToolCall for OxToolCall {
     fn id(&self) -> &str {

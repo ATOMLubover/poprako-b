@@ -16,7 +16,7 @@ pub mod tool;
 pub struct Agent<M, R>
 where
     M: IMessage + 'static,
-    R: Resolver<Message = M> + Send,
+    R: IResolver<Message = M> + Send,
 {
     context: Context<M>,
     tools: HashMap<String, DynTool>,
@@ -27,7 +27,7 @@ where
 impl<M, R> Agent<M, R>
 where
     M: IMessage + 'static,
-    R: Resolver<Message = M> + Send,
+    R: IResolver<Message = M> + Send,
 {
     pub fn from_context(cx: Context<M>, resolver: R) -> Self {
         Self {
@@ -71,7 +71,7 @@ where
         loop {
             let action = match self.resolver.resolve(&self.context).await {
                 Ok(action) => {
-                    tracing::debug!("resolver produced action: {:?}", action);
+                    tracing::info!("resolver produced action: {:?}", action);
                     action
                 }
                 Err(e) => {

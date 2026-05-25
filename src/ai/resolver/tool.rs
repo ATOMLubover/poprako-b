@@ -11,9 +11,9 @@ pub struct ToolDef {
 impl ToolDef {
     pub fn new(name: &str, description: &str, parameters: ParamDef) -> Self {
         Self {
-            name: name.to_string(),
-            description: description.to_string(),
-            parameters,
+            name,
+            desc,
+            params,
             strict: None,
         }
     }
@@ -22,6 +22,15 @@ impl ToolDef {
         self.strict = Some(strict);
         self
     }
+
+    pub fn build(self) -> ToolDef {
+        ToolDef {
+            name: self.name,
+            desc: self.desc,
+            params: self.params,
+            strict: self.strict,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -29,7 +38,7 @@ pub struct ParamDef {
     pub r#type: String,
     pub properties: HashMap<String, PropDef>,
     pub required: Option<Vec<String>>,
-    pub additional_properties: Option<bool>,
+    pub additional_props: Option<bool>,
 }
 
 impl ParamDef {
@@ -67,11 +76,11 @@ impl ParamDef {
         );
 
         let mut props = serde_json::Map::new();
-        for (name, prop) in &self.properties {
+        for (name, prop) in &self.props {
             let mut prop_map = serde_json::Map::new();
             prop_map.insert(
                 "description".to_string(),
-                serde_json::Value::String(prop.description().to_string()),
+                serde_json::Value::String(prop.desc().to_string()),
             );
             prop_map.insert(
                 "type".to_string(),
@@ -92,7 +101,7 @@ impl ParamDef {
             map.insert("required".to_string(), serde_json::Value::Array(arr));
         }
 
-        if let Some(additional) = self.additional_properties {
+        if let Some(additional) = self.additional_props {
             map.insert(
                 "additionalProperties".to_string(),
                 serde_json::Value::Bool(additional),
@@ -106,10 +115,35 @@ impl ParamDef {
 impl Default for ParamDef {
     fn default() -> Self {
         Self {
-            r#type: "object".to_string(),
-            properties: HashMap::new(),
+            r#type,
+            props: HashMap::new(),
             required: None,
-            additional_properties: None,
+            additional_props: None,
+        }
+    }
+
+    /// Add multiple named properties at once.
+    ///
+    /// Each entry is `(name, property)`. Use [`with_required`](Self::with_required)
+    /// to mark specific properties as required.
+    pub fn with_properties(mut self, properties: Vec<(&str, PropDef)>) -> Self {
+        properties.into_iter().for_each(|(name, prop)| {
+            self.props.insert(name.to_string(), prop);
+        });
+        self
+    }
+
+    pub fn with_required(mut self, required: Vec<String>) -> Self {
+        self.required = Some(required);
+        self
+    }
+
+    pub fn build(self) -> ParamDef {
+        ParamDef {
+            r#type: self.r#type,
+            props: self.props,
+            required: self.required,
+            additional_props: self.additional_props,
         }
     }
 }
@@ -117,21 +151,21 @@ impl Default for ParamDef {
 #[derive(Debug, Clone)]
 pub enum PropDef {
     String {
-        description: String,
+        desc: String,
         r#enum: Option<Vec<String>>,
     },
     Number {
-        description: String,
+        desc: String,
         r#enum: Option<Vec<f64>>,
     },
     Boolean {
-        description: String,
+        desc: String,
     },
     Array {
-        description: String,
+        desc: String,
     },
     Object {
-        description: String,
+        desc: String,
     },
 }
 

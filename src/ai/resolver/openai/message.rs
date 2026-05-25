@@ -3,7 +3,7 @@ use openai_oxide::types::chat::{ChatCompletionMessageParam, ToolCall as OxToolCa
 use crate::ai::resolver::action::Action;
 use crate::ai::resolver::message::{IMessage, MessageRef};
 
-pub trait OpenAiMessage: IMessage<ToolCall = OxToolCall> {}
+pub trait IOpenAiMessage: IMessage<ToolCall = OxToolCall> {}
 
 impl From<Action<OxToolCall>> for ChatCompletionMessageParam {
     fn from(value: Action<OxToolCall>) -> Self {
@@ -88,4 +88,4 @@ impl IMessage for ChatCompletionMessageParam {
     }
 }
 
-impl OpenAiMessage for ChatCompletionMessageParam {}
+impl IOpenAiMessage for ChatCompletionMessageParam {}

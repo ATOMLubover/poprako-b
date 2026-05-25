@@ -11,7 +11,7 @@ use crate::ai::resolver::message::IMessage;
 use crate::ai::resolver::result::ResolveResult;
 
 #[async_trait::async_trait]
-pub trait Resolver: Send {
+pub trait IResolver {
     type Message: IMessage + 'static;
 
     async fn resolve(
@@ -24,13 +24,13 @@ pub mod result {
     #[derive(Debug)]
     pub enum ResolveError {
         /// API returned no choices.
-        InvalidResponse,
+        NoChoice,
         /// OpenAI API returned an error.
-        ApiError { status: u16, message: String },
+        Api { status: u16, message: String },
         /// HTTP request / network layer failure.
-        RequestError { message: String },
+        Network { message: String },
         /// JSON (de)serialization failure.
-        JsonError { message: String },
+        JsonSerde { message: String },
         /// Something else went wrong.
         Unknown { message: String },
     }

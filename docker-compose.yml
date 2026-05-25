@@ -1,0 +1,45 @@
+services:
+  napcat:
+    environment:
+      - NAPCAT_UID=${NAPCAT_UID:-1000}
+      - NAPCAT_GID=${NAPCAT_GID:-1000}
+    ports:
+      - 3000:3000
+      - 3001:3001
+      - 6099:6099
+    container_name: napcat
+    restart: always
+    image: mlikiowa/napcat-docker@sha256:2acfef8952da052ec66d8608e69db555c02e5ccc6e27e2609d641a2bee99be23
+    pull_policy: if_not_present
+    volumes:
+      - napcat-qq-data:/app/.config/QQ
+      - napcat-config:/app/napcat/config
+    networks:
+      - poprako-net
+
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: poprako-b
+    restart: always
+    env_file:
+      - .env
+    environment:
+      - RUST_LOG=${RUST_LOG:-info}
+      - NAPCAT_REVERSE_WS_HOST=0.0.0.0
+      - NAPCAT_REVERSE_WS_PORT=8081
+      - NAPCAT_REVERSE_WS_SUFFIX=onebot/v11
+      - NAPCAT_ACCESS_TOKEN=${NAPCAT_ACCESS_TOKEN}
+    expose:
+      - "8081"
+    networks:
+      - poprako-net
+
+networks:
+  poprako-net:
+    driver: bridge
+
+volumes:
+  napcat-qq-data:
+  napcat-config:
