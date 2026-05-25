@@ -6,6 +6,7 @@ use crate::bot::message::Message;
 use crate::bot::state::BotState;
 
 type GroupMessageFuture = Pin<Box<dyn Future<Output = anyhow::Result<Option<Message>>> + Send>>;
+
 type GroupMessageHandler =
     Arc<dyn Fn(BotState, Message) -> GroupMessageFuture + Send + Sync + 'static>;
 

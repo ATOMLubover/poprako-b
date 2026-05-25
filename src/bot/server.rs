@@ -12,32 +12,32 @@ use crate::bot::router::Router;
 use crate::bot::state::BotState;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ReverseWsServerConfig {
+pub struct ReverseWebSockServerConfig {
     pub host: String,
     pub port: u16,
     pub suffix: String,
     pub access_token: Option<String>,
 }
 
-impl Default for ReverseWsServerConfig {
+impl Default for ReverseWebSockServerConfig {
     fn default() -> Self {
         Self {
             host: "0.0.0.0".to_string(),
-            port: 8080,
+            port: 8081,
             suffix: "onebot/v11".to_string(),
             access_token: None,
         }
     }
 }
 
-impl ReverseWsServerConfig {
+impl ReverseWebSockServerConfig {
     pub fn from_env() -> anyhow::Result<Self> {
         let host = env::var("NAPCAT_REVERSE_WS_HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
         let port = match env::var("NAPCAT_REVERSE_WS_PORT") {
             Ok(value) => value
                 .parse::<u16>()
                 .with_context(|| format!("invalid NAPCAT_REVERSE_WS_PORT: {value}"))?,
-            Err(_) => 8080,
+            Err(_) => 8081,
         };
         let suffix =
             env::var("NAPCAT_REVERSE_WS_SUFFIX").unwrap_or_else(|_| "onebot/v11".to_string());
@@ -54,8 +54,8 @@ impl ReverseWsServerConfig {
     }
 }
 
-impl From<ReverseWsServerConfig> for ReverseWsConfig {
-    fn from(value: ReverseWsServerConfig) -> Self {
+impl From<ReverseWebSockServerConfig> for ReverseWsConfig {
+    fn from(value: ReverseWebSockServerConfig) -> Self {
         Self {
             host: value.host,
             port: value.port,
@@ -70,13 +70,13 @@ pub struct BotServer {
 }
 
 impl BotServer {
-    pub async fn reverse_ws(config: ReverseWsServerConfig) -> anyhow::Result<Self> {
+    pub async fn reverse_websock(config: ReverseWebSockServerConfig) -> anyhow::Result<Self> {
         let connection = ReverseWsConnect::new(config.into()).await?;
         Ok(Self { connection })
     }
 
     pub async fn from_env() -> anyhow::Result<Self> {
-        Self::reverse_ws(ReverseWsServerConfig::from_env()?).await
+        Self::reverse_websock(ReverseWebSockServerConfig::from_env()?).await
     }
 
     pub async fn serve(self, router: Router) -> anyhow::Result<()> {
@@ -100,6 +100,7 @@ impl BotServer {
             }
 
             let state = BotState::new(self.connection.clone());
+
             let reply = match router.handle_group_message(state, message.clone()).await {
                 Ok(reply) => reply,
                 Err(error) => {

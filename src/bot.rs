@@ -1,10 +1,22 @@
-pub mod message;
-pub mod router;
-pub mod server;
-pub mod state;
+mod agent;
+mod handler;
+mod message;
+mod router;
+mod server;
+mod state;
 
-pub use message::Message;
-pub use onebot_v11::MessageSegment;
-pub use router::Router;
-pub use server::{BotServer, ReverseWsServerConfig};
-pub use state::{Bot, BotState};
+use handler::handle_group_message;
+use router::Router;
+use server::BotServer;
+
+fn init_router() -> Router {
+    Router::new().on_group_message(handle_group_message)
+}
+
+pub async fn run_server() -> anyhow::Result<()> {
+    tracing::info!("starting poprako-b bot server");
+
+    let router = init_router();
+
+    BotServer::from_env().await?.serve(router).await
+}

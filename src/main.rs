@@ -1,23 +1,8 @@
 use anyhow::Result;
-use poprako_b_preview::bot::{BotServer, BotState, Message, Router};
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::fmt;
 use tracing_subscriber::layer::SubscriberExt as _;
 use tracing_subscriber::util::SubscriberInitExt as _;
-
-pub async fn handle_group_message(
-    _state: BotState,
-    msg: Message,
-) -> anyhow::Result<Option<Message>> {
-    tracing::info!(
-        group_id = msg.group_id(),
-        user_id = msg.user_id(),
-        raw_message = msg.raw_text(),
-        "received group message"
-    );
-
-    Ok(None)
-}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -28,6 +13,5 @@ async fn main() -> Result<()> {
         .with(EnvFilter::from_default_env())
         .init();
 
-    let router = Router::new().on_group_message(handle_group_message);
-    BotServer::from_env().await?.serve(router).await
+    poprako_b_preview::bot::run_server().await
 }

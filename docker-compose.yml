@@ -9,7 +9,11 @@ services:
       - 6099:6099
     container_name: napcat
     restart: always
-    image: mlikiowa/napcat-docker:latest
+    image: mlikiowa/napcat-docker@sha256:2acfef8952da052ec66d8608e69db555c02e5ccc6e27e2609d641a2bee99be23
+    pull_policy: if_not_present
+    volumes:
+      - napcat-qq-data:/app/.config/QQ
+      - napcat-config:/app/napcat/config
     networks:
       - poprako-net
 
@@ -24,14 +28,18 @@ services:
     environment:
       - RUST_LOG=${RUST_LOG:-info}
       - NAPCAT_REVERSE_WS_HOST=0.0.0.0
-      - NAPCAT_REVERSE_WS_PORT=8080
+      - NAPCAT_REVERSE_WS_PORT=8081
       - NAPCAT_REVERSE_WS_SUFFIX=onebot/v11
       - NAPCAT_ACCESS_TOKEN=${NAPCAT_ACCESS_TOKEN}
     expose:
-      - "8080"
+      - "8081"
     networks:
       - poprako-net
 
 networks:
   poprako-net:
     driver: bridge
+
+volumes:
+  napcat-qq-data:
+  napcat-config:

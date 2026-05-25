@@ -11,7 +11,7 @@ pub struct Bot {
 }
 
 impl Bot {
-    pub(crate) fn new(connection: Arc<ReverseWsConnect>) -> Self {
+    pub fn new(connection: Arc<ReverseWsConnect>) -> Self {
         Self { connection }
     }
 
@@ -23,6 +23,7 @@ impl Bot {
         });
 
         self.connection.clone().call_api(payload).await?;
+
         Ok(())
     }
 
