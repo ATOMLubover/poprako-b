@@ -9,28 +9,26 @@ pub async fn handle_group_message(state: &mut BotState, msg: &Message) -> Option
         "received group message"
     );
 
-    let user_text = extract_prk_text(msg);
-    if user_text.is_empty() {
-        return None;
-    }
+    let user_text = match extract_user_text(msg) {
+        Some(text) => text,
+        None => return None,
+    };
 
-    let reply = state.agent.try_respond(&user_text).await;
-    reply.map(Message::text)
+    state
+        .agent_mut()
+        .try_respond(&user_text)
+        .await
+        .map(Message::text)
 }
 
-fn extract_prk_text(msg: &Message) -> String {
+fn extract_user_text(msg: &Message) -> Option<String> {
     let raw = msg.raw_text();
     let prefix = "/prk";
 
-    let after_prefix = if let Some(rest) = raw.strip_prefix(prefix) {
-        rest.trim_start()
-    } else {
-        return String::new();
+    let after_prefix = match raw.strip_prefix(prefix) {
+        Some(text) => text.trim(),
+        None => return None,
     };
 
-    if after_prefix.is_empty() {
-        return String::from("你好");
-    }
-
-    after_prefix.to_string()
+    Some(after_prefix.to_string())
 }

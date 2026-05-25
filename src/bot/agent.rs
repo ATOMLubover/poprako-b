@@ -27,8 +27,8 @@ impl BotAgent {
     pub fn new() -> anyhow::Result<Self> {
         let resolver = OpenAiResolver::from_env();
 
-        let system_prompt = BotPrompt::assemble()?;
-        let mem_dir = memory_dir();
+        let system_prompt = BotPrompt::system_prompt()?;
+        let memory_dir = memory_dir();
 
         let cx = ContextBuilder::new(Self::MODEL_NAME)
             .messages(vec![ChatCompletionMessageParam::System {
@@ -39,8 +39,8 @@ impl BotAgent {
 
         let agent = OpenAiAgentBuilder::new(cx, resolver)
             .tools(vec![
-                Box::new(ListMemoryShardsTool::new(mem_dir.clone())),
-                Box::new(RecallMemoryShardTool::new(mem_dir)),
+                Box::new(ListMemoryShardsTool::new(memory_dir.clone())),
+                Box::new(RecallMemoryShardTool::new(memory_dir)),
             ])
             .compact(sliding_window_compact)
             .build();

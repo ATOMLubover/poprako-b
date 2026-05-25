@@ -88,27 +88,32 @@ impl BotServer {
 
         loop {
             let event = match events.recv().await {
-                Ok(event) => event,
+                Ok(event) => {
+                    tracing::debug!("received onebot event: {event:?}");
+                    event
+                }
                 Err(error) => {
                     tracing::warn!("failed to receive onebot event: {error}");
                     continue;
                 }
             };
 
-            let Some(message) = Self::extract_group_message(event) else {
-                continue;
+            let message = match Self::extract_group_message(event) {
+                Some(msg) => msg,
+                None => continue,
             };
 
             if message.user_id() == message.self_id() {
                 continue;
             }
 
-            let Some(reply) = handle_group_message(&mut state, &message).await else {
-                continue;
+            let reply = match handle_group_message(&mut state, &message).await {
+                Some(reply) => reply,
+                None => continue,
             };
 
             if let Err(error) = self.reply_to_group_message(message, reply).await {
-                tracing::error!("failed to send group reply: {error:?}");
+                tracing::error!("failed to reply to group message: {error}");
             }
         }
     }
