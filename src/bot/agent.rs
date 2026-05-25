@@ -23,6 +23,7 @@ pub struct BotAgent {
 impl BotAgent {
     pub fn new() -> anyhow::Result<Self> {
         let resolver = OpenAiResolver::from_env();
+
         let system_prompt = BotPrompt::assemble()?;
         let mem_dir = memory_dir();
 
