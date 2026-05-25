@@ -7,9 +7,9 @@ pub mod local;
 /// a description, and a function to execute with given arguments.
 #[async_trait::async_trait]
 pub trait ITool {
-    fn def(&self) -> ToolDef;
+    fn defination(&self) -> ToolDef;
 
-    async fn exec(&mut self, args: &str) -> ToolResult;
+    async fn execute(&mut self, args: &str) -> ToolResult;
 }
 
 /// DynTool is a type alias for a boxed dynamic ITool that is Send,

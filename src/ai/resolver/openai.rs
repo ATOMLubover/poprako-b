@@ -5,7 +5,7 @@ pub mod tool;
 
 use crate::ai::resolver::action::{Action, Reason};
 use crate::ai::resolver::result::{ResolveError, ResolveResult};
-use crate::ai::resolver::{Context, IResolver};
+use crate::ai::resolver::{Context, Resolver};
 use openai_oxide::types::chat::{
     ChatCompletionMessageParam, ChatCompletionRequest, FunctionCall, Tool as OxTool,
     ToolCall as OxToolCall,
@@ -34,15 +34,15 @@ impl OpenAiResolver {
     }
 
     fn map_tool(tool: &crate::ai::resolver::tool::ToolDef) -> OxTool {
-        OxTool::function(&tool.name, &tool.desc, tool.params.to_value())
+        OxTool::function(&tool.name, &tool.description, tool.parameters.to_value())
     }
 
     fn map_err(err: OpenAIError) -> ResolveError {
         match err {
             OpenAIError::ApiError {
                 status, message, ..
-            } => ResolveError::Api { status, message },
-            OpenAIError::RequestError(e) => ResolveError::Network {
+            } => ResolveError::ApiError { status, message },
+            OpenAIError::RequestError(e) => ResolveError::RequestError {
                 message: e.to_string(),
             },
             OpenAIError::JsonError(e) => ResolveError::JsonSerde {

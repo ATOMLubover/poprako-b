@@ -1,23 +1,15 @@
 use std::collections::HashMap;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ToolDef {
     pub name: String,
-    pub desc: String,
-    pub params: ParamDef,
+    pub description: String,
+    pub parameters: ParamDef,
     pub strict: Option<bool>,
 }
 
-/// Builder for [`ToolDef`].
-pub struct ToolDefBuilder {
-    name: String,
-    desc: String,
-    params: ParamDef,
-    strict: Option<bool>,
-}
-
-impl ToolDefBuilder {
-    pub fn new(name: String, desc: String, params: ParamDef) -> Self {
+impl ToolDef {
+    pub fn new(name: &str, description: &str, parameters: ParamDef) -> Self {
         Self {
             name,
             desc,
@@ -44,12 +36,37 @@ impl ToolDefBuilder {
 #[derive(Debug, Clone)]
 pub struct ParamDef {
     pub r#type: String,
-    pub props: HashMap<String, PropDef>,
+    pub properties: HashMap<String, PropDef>,
     pub required: Option<Vec<String>>,
     pub additional_props: Option<bool>,
 }
 
 impl ParamDef {
+    pub fn new(r#type: &str) -> Self {
+        Self {
+            r#type: r#type.to_string(),
+            properties: HashMap::new(),
+            required: None,
+            additional_properties: None,
+        }
+    }
+
+    /// Add multiple named properties at once.
+    ///
+    /// Each entry is `(name, property)`. Use [`with_required`](Self::with_required)
+    /// to mark specific properties as required.
+    pub fn with_properties(mut self, properties: Vec<(&str, PropDef)>) -> Self {
+        properties.into_iter().for_each(|(name, prop)| {
+            self.properties.insert(name.to_string(), prop);
+        });
+        self
+    }
+
+    pub fn with_required(mut self, required: Vec<String>) -> Self {
+        self.required = Some(required);
+        self
+    }
+
     /// Convert to a `serde_json::Value` matching the OpenAI JSON Schema format.
     pub fn to_value(&self) -> serde_json::Value {
         let mut map = serde_json::Map::new();
@@ -95,16 +112,8 @@ impl ParamDef {
     }
 }
 
-/// Builder for [`ParamDef`].
-pub struct ParamDefBuilder {
-    r#type: String,
-    props: HashMap<String, PropDef>,
-    required: Option<Vec<String>>,
-    additional_props: Option<bool>,
-}
-
-impl ParamDefBuilder {
-    pub fn new(r#type: String) -> Self {
+impl Default for ParamDef {
+    fn default() -> Self {
         Self {
             r#type,
             props: HashMap::new(),
@@ -161,13 +170,13 @@ pub enum PropDef {
 }
 
 impl PropDef {
-    fn desc(&self) -> &str {
+    fn description(&self) -> &str {
         match self {
-            PropDef::String { desc, .. }
-            | PropDef::Number { desc, .. }
-            | PropDef::Boolean { desc }
-            | PropDef::Array { desc }
-            | PropDef::Object { desc } => desc,
+            PropDef::String { description, .. }
+            | PropDef::Number { description, .. }
+            | PropDef::Boolean { description }
+            | PropDef::Array { description }
+            | PropDef::Object { description } => description,
         }
     }
 
