@@ -2,11 +2,13 @@ pub mod prompt;
 
 use std::path::PathBuf;
 
-use crate::ai::agent::openai::OpenAiAgent;
-use crate::ai::agent::tool::local::memory::{ListMemoryShardsTool, RecallMemoryShardTool};
-use crate::ai::resolver::openai::OpenAiResolver;
 use openai_oxide::types::chat::{ChatCompletionMessageParam, UserContent};
 use prompt::BotPrompt;
+
+use crate::ai::agent::openai::{OpenAiAgent, OpenAiAgentBuilder};
+use crate::ai::agent::tool::local::memory::{ListMemoryShardsTool, RecallMemoryShardTool};
+use crate::ai::resolver::context::ContextBuilder;
+use crate::ai::resolver::openai::OpenAiResolver;
 
 pub fn memory_dir() -> PathBuf {
     std::env::var("MEMORY_DIR")
@@ -28,11 +30,14 @@ impl BotAgent {
         let system_prompt = BotPrompt::assemble()?;
         let mem_dir = memory_dir();
 
-        let agent = OpenAiAgent::builder(Self::MODEL_NAME, resolver)
+        let cx = ContextBuilder::new(Self::MODEL_NAME)
             .messages(vec![ChatCompletionMessageParam::System {
                 content: system_prompt.clone(),
                 name: None,
             }])
+            .build();
+
+        let agent = OpenAiAgentBuilder::new(cx, resolver)
             .tools(vec![
                 Box::new(ListMemoryShardsTool::new(mem_dir.clone())),
                 Box::new(RecallMemoryShardTool::new(mem_dir)),

@@ -2,13 +2,11 @@ use std::collections::HashMap;
 
 use crate::ai::agent::tool::DynTool;
 use crate::ai::agent::tool::result::ToolOutput;
-use crate::ai::resolver::ContextBuilder;
 use crate::ai::resolver::IResolver;
 use crate::ai::resolver::action::Reason;
 use crate::ai::resolver::context::Context;
 use crate::ai::resolver::message::{IMessage, MessageRef};
 use crate::ai::resolver::tool::IToolCall;
-use crate::ai::resolver::tool::ToolDef;
 
 pub mod openai;
 
@@ -38,10 +36,6 @@ where
         }
     }
 
-    pub fn builder(model: impl Into<String>, resolver: R) -> AgentBuilder<M, R> {
-        AgentBuilder::new(model, resolver)
-    }
-
     pub fn set_tools(&mut self, tools: Vec<DynTool>) {
         let mut tool_defs = vec![];
 
@@ -52,7 +46,7 @@ where
             self.tools.insert(def.name.clone(), tool);
         }
 
-        self.context.set_tools(tool_defs);
+        self.context.set_tool_defs(tool_defs);
     }
 
     pub fn set_messages(&mut self, messages: Vec<M>) {
@@ -69,7 +63,7 @@ where
             defs.push(def.clone());
             self.tools.insert(def.name.clone(), tool);
         }
-        self.context.set_tools(defs);
+        self.context.set_tool_defs(defs);
 
         old
     }
@@ -159,7 +153,7 @@ where
     M: IMessage + 'static,
     R: IResolver<Message = M> + Send,
 {
-    context_builder: ContextBuilder<M>,
+    context: Context<M>,
     resolver: R,
     tools: Vec<DynTool>,
 }
@@ -169,22 +163,12 @@ where
     M: IMessage + 'static,
     R: IResolver<Message = M> + Send,
 {
-    pub fn new(model: impl Into<String>, resolver: R) -> Self {
+    pub fn new(context: Context<M>, resolver: R) -> Self {
         Self {
-            context_builder: ContextBuilder::new(model),
+            context,
             resolver,
             tools: Vec::new(),
         }
-    }
-
-    pub fn messages(mut self, messages: Vec<M>) -> Self {
-        self.context_builder = self.context_builder.messages(messages);
-        self
-    }
-
-    pub fn context_tools(mut self, tools: Vec<ToolDef>) -> Self {
-        self.context_builder = self.context_builder.tools(tools);
-        self
     }
 
     pub fn tools(mut self, tools: Vec<DynTool>) -> Self {
@@ -193,12 +177,19 @@ where
     }
 
     pub fn build(self) -> Agent<M, R> {
-        let mut agent = Agent::from_context(self.context_builder.build(), self.resolver);
+        let mut agent = Agent::from_context(self.context, self.resolver);
         if !self.tools.is_empty() {
-            // set_tools calls context.set_tools internally.
-            // This is fine because agent.context has no tools yet.
-            agent.set_tools(self.tools);
+            let mut tool_defs = Vec::with_capacity(self.tools.len());
+            for tool in &self.tools {
+                tool_defs.push(tool.def().clone());
+            }
+            agent.context.set_tool_defs(tool_defs);
+            for tool in self.tools {
+                let def = tool.def();
+                agent.tools.insert(def.name.clone(), tool);
+            }
         }
+
         agent
     }
 }
@@ -210,6 +201,7 @@ mod tests {
     use std::path::PathBuf;
 
     use crate::ai::agent::tool::local::fs::{CreateFileTool, ReadFileTool};
+    use crate::ai::resolver::context::ContextBuilder;
     use crate::ai::resolver::openai::OpenAiResolver;
 
     use openai_oxide::types::chat::ChatCompletionMessageParam;
@@ -231,7 +223,7 @@ mod tests {
 
         let resolver = OpenAiResolver::from_env();
 
-        let mut agent = Agent::builder("deepseek-v4-flash", resolver)
+        let cx = ContextBuilder::new("deepseek-v4-flash")
             .messages(vec![
                 ChatCompletionMessageParam::System {
                     content:
@@ -251,6 +243,9 @@ mod tests {
                     name: None,
                 },
             ])
+            .build();
+
+        let mut agent = AgentBuilder::new(cx, resolver)
             .tools(vec![
                 Box::new(CreateFileTool::new(output_dir.clone())),
                 Box::new(ReadFileTool::new(output_dir)),

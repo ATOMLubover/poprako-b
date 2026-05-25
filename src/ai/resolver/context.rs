@@ -10,7 +10,7 @@ where
 {
     model: String,
     messages: Vec<M>,
-    tools: Vec<ToolDef>,
+    tool_defs: Vec<ToolDef>,
 }
 
 impl<M> Context<M>
@@ -21,12 +21,8 @@ where
         Self {
             model,
             messages: Vec::new(),
-            tools: Vec::new(),
+            tool_defs: Vec::new(),
         }
-    }
-
-    pub fn builder(model: impl Into<String>) -> ContextBuilder<M> {
-        ContextBuilder::new(model)
     }
 
     pub fn messages(&self) -> &[M] {
@@ -41,12 +37,12 @@ where
         self.messages = messages;
     }
 
-    pub fn tools(&self) -> &[ToolDef] {
-        &self.tools
+    pub fn tool_defs(&self) -> &[ToolDef] {
+        &self.tool_defs
     }
 
-    pub fn set_tools(&mut self, tools: Vec<ToolDef>) {
-        self.tools = tools;
+    pub fn set_tool_defs(&mut self, tool_defs: Vec<ToolDef>) {
+        self.tool_defs = tool_defs;
     }
 
     pub fn model(&self) -> &str {
@@ -64,7 +60,7 @@ where
 {
     model: String,
     messages: Vec<M>,
-    tools: Vec<ToolDef>,
+    tool_defs: Vec<ToolDef>,
 }
 
 impl<M> ContextBuilder<M>
@@ -75,7 +71,7 @@ where
         Self {
             model: model.into(),
             messages: Vec::new(),
-            tools: Vec::new(),
+            tool_defs: Vec::new(),
         }
     }
 
@@ -84,8 +80,8 @@ where
         self
     }
 
-    pub fn tools(mut self, tools: Vec<ToolDef>) -> Self {
-        self.tools = tools;
+    pub fn tool_defs(mut self, tool_defs: Vec<ToolDef>) -> Self {
+        self.tool_defs = tool_defs;
         self
     }
 
@@ -93,7 +89,7 @@ where
         Context {
             model: self.model,
             messages: self.messages,
-            tools: self.tools,
+            tool_defs: self.tool_defs,
         }
     }
 }

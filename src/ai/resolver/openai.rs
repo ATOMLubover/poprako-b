@@ -104,7 +104,7 @@ impl IResolver for OpenAiResolver {
         let mut request =
             ChatCompletionRequest::new(cx.model().to_string(), cx.messages().to_vec());
 
-        let tools = cx.tools();
+        let tools = cx.tool_defs();
         if !tools.is_empty() {
             let ox_tools: Vec<OxTool> = tools.iter().map(Self::map_tool).collect();
             let tool_names: Vec<&str> = ox_tools.iter().map(|t| t.function.name.as_str()).collect();
