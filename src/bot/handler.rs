@@ -1,3 +1,5 @@
+use onebot_v11::MessageSegment;
+
 use crate::bot::message::Message;
 use crate::bot::state::BotState;
 
@@ -25,13 +27,43 @@ pub async fn handle_group_message(state: &mut BotState, msg: &Message) -> Option
 }
 
 fn extract_user_text(msg: &Message) -> Option<String> {
-    let raw = msg.raw_text();
-    let prefix = "/prk";
+    let self_id = msg.self_id()?;
 
-    let after_prefix = match raw.strip_prefix(prefix) {
-        Some(text) => text.trim(),
-        None => return None,
-    };
+    // Try @bot at beginning first
+    if let Some(text) = try_extract_at(msg, self_id) {
+        return Some(text);
+    }
 
-    Some(after_prefix.to_string())
+    // Fall back to /prk prefix
+    try_extract_prk(msg)
+}
+
+/// Extract text after @bot at the beginning of the message (skipping Reply segments).
+fn try_extract_at(msg: &Message, self_id: i64) -> Option<String> {
+    let mut iter = msg.segments().iter().skip_while(|seg| {
+        matches!(seg, MessageSegment::Reply { .. })
+    });
+
+    match iter.next()? {
+        MessageSegment::At { data } if data.qq == self_id.to_string() => {}
+        _ => return None,
+    }
+
+    let text: String = iter
+        .filter_map(|seg| match seg {
+            MessageSegment::Text { data } => Some(data.text.as_str()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("")
+        .trim()
+        .to_string();
+
+    if text.is_empty() { None } else { Some(text) }
+}
+
+/// Extract text after `/prk` prefix from raw_message.
+fn try_extract_prk(msg: &Message) -> Option<String> {
+    let text = msg.raw_text().strip_prefix("/prk")?.trim().to_string();
+    if text.is_empty() { None } else { Some(text) }
 }
