@@ -131,9 +131,8 @@ impl ITool for ReadFileTool {
             .with_properties(vec![(
                 "path",
                 PropDef::String {
-                    desc:
-                        "Relative path of the file to read, relative to the base directory."
-                            .to_string(),
+                    desc: "Relative path of the file to read, relative to the base directory."
+                        .to_string(),
                     r#enum: None,
                 },
             )])

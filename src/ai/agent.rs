@@ -10,7 +10,6 @@ use crate::ai::resolver::tool::IToolCall;
 
 pub mod openai;
 
-pub mod prompts;
 pub mod tool;
 
 pub struct Agent<M, R>
@@ -48,6 +47,10 @@ where
         }
 
         self.context.set_tools(tool_defs);
+    }
+
+    pub fn set_messages(&mut self, messages: Vec<M>) {
+        self.context.set_messages(messages);
     }
 
     /// Replace all registered tools, returning the old ones.
