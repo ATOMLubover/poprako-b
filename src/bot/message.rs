@@ -51,7 +51,7 @@ impl Message {
         self.segments
     }
 
-    pub(crate) fn from_group_message(group_message: GroupMessage) -> Self {
+    pub fn from_group_message(group_message: GroupMessage) -> Self {
         Self {
             self_id: Some(group_message.self_id),
             message_id: Some(group_message.message_id),

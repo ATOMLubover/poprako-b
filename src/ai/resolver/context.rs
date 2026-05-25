@@ -33,6 +33,10 @@ where
         self.messages.push(message);
     }
 
+    pub fn take_messages(&mut self) -> Vec<M> {
+        std::mem::take(&mut self.messages)
+    }
+
     pub fn set_messages(&mut self, messages: Vec<M>) {
         self.messages = messages;
     }

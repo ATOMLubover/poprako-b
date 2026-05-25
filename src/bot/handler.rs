@@ -1,9 +1,7 @@
 use crate::bot::message::Message;
 use crate::bot::state::BotState;
 
-use crate::bot::agent::BotAgent;
-
-pub async fn handle_group_message(_: BotState, msg: Message) -> anyhow::Result<Option<Message>> {
+pub async fn handle_group_message(state: &mut BotState, msg: &Message) -> Option<Message> {
     tracing::info!(
         group_id = msg.group_id(),
         user_id = msg.user_id(),
@@ -11,19 +9,13 @@ pub async fn handle_group_message(_: BotState, msg: Message) -> anyhow::Result<O
         "received group message"
     );
 
-    let user_text = extract_prk_text(&msg);
+    let user_text = extract_prk_text(msg);
     if user_text.is_empty() {
-        return Ok(None);
+        return None;
     }
 
-    let mut agent = BotAgent::new()?;
-
-    let reply = agent.respond(&user_text).await;
-
-    match reply {
-        Some(text) => Ok(Some(Message::text(text))),
-        None => Ok(None),
-    }
+    let reply = state.agent.try_respond(&user_text).await;
+    reply.map(Message::text)
 }
 
 fn extract_prk_text(msg: &Message) -> String {

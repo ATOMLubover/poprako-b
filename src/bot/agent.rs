@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use openai_oxide::types::chat::{ChatCompletionMessageParam, UserContent};
 use prompt::BotPrompt;
 
+use crate::ai::agent::compact::sliding_window_compact;
 use crate::ai::agent::openai::{OpenAiAgent, OpenAiAgentBuilder};
 use crate::ai::agent::tool::local::memory::{ListMemoryShardsTool, RecallMemoryShardTool};
 use crate::ai::resolver::context::ContextBuilder;
@@ -18,7 +19,6 @@ pub fn memory_dir() -> PathBuf {
 
 pub struct BotAgent {
     agent: OpenAiAgent,
-    system_prompt: String,
 }
 
 impl BotAgent {
@@ -32,7 +32,7 @@ impl BotAgent {
 
         let cx = ContextBuilder::new(Self::MODEL_NAME)
             .messages(vec![ChatCompletionMessageParam::System {
-                content: system_prompt.clone(),
+                content: system_prompt,
                 name: None,
             }])
             .build();
@@ -42,26 +42,21 @@ impl BotAgent {
                 Box::new(ListMemoryShardsTool::new(mem_dir.clone())),
                 Box::new(RecallMemoryShardTool::new(mem_dir)),
             ])
+            .compact(sliding_window_compact)
             .build();
 
-        Ok(Self {
-            agent,
-            system_prompt,
-        })
+        Ok(Self { agent })
     }
 
-    pub async fn respond(&mut self, user_text: &str) -> Option<String> {
-        let mut messages = vec![ChatCompletionMessageParam::System {
-            content: self.system_prompt.clone(),
-            name: None,
-        }];
-
-        messages.push(ChatCompletionMessageParam::User {
+    pub async fn try_respond(&mut self, user_text: &str) -> Option<String> {
+        self.agent.push_message(ChatCompletionMessageParam::User {
             content: UserContent::Text(user_text.to_string()),
             name: None,
         });
 
-        self.agent.set_messages(messages);
-        self.agent.run_loop().await
+        // Compact before solving to keep context within sliding window.
+        self.agent.compact();
+
+        self.agent.solve().await
     }
 }

@@ -9,8 +9,10 @@ use crate::ai::resolver::message::{IMessage, MessageRef};
 use crate::ai::resolver::tool::IToolCall;
 
 pub mod openai;
-
+pub mod compact;
 pub mod tool;
+
+pub type Compact<M> = fn(&mut Context<M>);
 
 pub struct Agent<M, R>
 where
@@ -21,6 +23,8 @@ where
     tools: HashMap<String, DynTool>,
 
     resolver: R,
+
+    compact: Option<Compact<M>>,
 }
 
 impl<M, R> Agent<M, R>
@@ -33,6 +37,7 @@ where
             context: cx,
             tools: HashMap::new(),
             resolver,
+            compact: None,
         }
     }
 
@@ -49,8 +54,16 @@ where
         self.context.set_tool_defs(tool_defs);
     }
 
+    pub fn push_message(&mut self, message: M) {
+        self.context.push_message(message);
+    }
+
     pub fn set_messages(&mut self, messages: Vec<M>) {
         self.context.set_messages(messages);
+    }
+
+    pub fn set_compact(&mut self, compact: Compact<M>) {
+        self.compact = Some(compact);
     }
 
     /// Replace all registered tools, returning the old ones.
@@ -70,7 +83,7 @@ where
 
     /// Run the agent loop. Returns the final assistant text response, or `None`
     /// if the resolver failed before producing a final answer.
-    pub async fn run_loop(&mut self) -> Option<String> {
+    pub async fn solve(&mut self) -> Option<String> {
         loop {
             let action = match self.resolver.resolve(&self.context).await {
                 Ok(action) => {
@@ -135,6 +148,12 @@ where
         }
     }
 
+    pub fn compact(&mut self) {
+        if let Some(compact) = self.compact {
+            compact(&mut self.context);
+        }
+    }
+
     async fn dispatch_tool_call(&mut self, call: &M::ToolCall) -> Result<ToolOutput, String> {
         let tool = match self.tools.get_mut(call.name()) {
             Some(tool) => tool,
@@ -156,6 +175,7 @@ where
     context: Context<M>,
     resolver: R,
     tools: Vec<DynTool>,
+    compact: Option<Compact<M>>,
 }
 
 impl<M, R> AgentBuilder<M, R>
@@ -168,6 +188,7 @@ where
             context,
             resolver,
             tools: Vec::new(),
+            compact: None,
         }
     }
 
@@ -176,8 +197,14 @@ where
         self
     }
 
+    pub fn compact(mut self, compact: Compact<M>) -> Self {
+        self.compact = Some(compact);
+        self
+    }
+
     pub fn build(self) -> Agent<M, R> {
         let mut agent = Agent::from_context(self.context, self.resolver);
+        agent.compact = self.compact;
         if !self.tools.is_empty() {
             let mut tool_defs = Vec::with_capacity(self.tools.len());
             for tool in &self.tools {
@@ -252,7 +279,7 @@ mod tests {
             ])
             .build();
 
-        let result = agent.run_loop().await;
+        let result = agent.solve().await;
         assert!(result.is_some(), "agent should return a final response");
         assert!(
             target_file.exists(),
