@@ -1,8 +1,14 @@
 services:
   napcat:
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     environment:
       - NAPCAT_UID=${NAPCAT_UID:-1000}
       - NAPCAT_GID=${NAPCAT_GID:-1000}
+      - ACCOUNT=${ACCOUNT}
     ports:
       - 3000:3000
       - 3001:3001
@@ -18,9 +24,16 @@ services:
       - poprako-net
 
   bot:
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    image: poprako-b-preview-bot:latest
     build:
       context: .
       dockerfile: Dockerfile
+      pull: false
     container_name: poprako-b
     restart: always
     env_file:

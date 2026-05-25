@@ -2,7 +2,13 @@ run-napcat:
 	docker compose up -d napcat
 
 run-bot:
-	docker compose up -d --build bot
+	docker compose up -d bot
 
 run-stack:
-	docker compose up -d --build napcat bot
+	docker compose up -d napcat bot
+
+build-bot:
+	DOCKER_BUILDKIT=0 docker compose build bot
+
+down:
+	docker compose down

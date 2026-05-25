@@ -22,8 +22,6 @@ impl ToolDef {
         self.strict = Some(strict);
         self
     }
-
-
 }
 
 #[derive(Debug, Clone)]

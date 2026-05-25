@@ -1,10 +1,9 @@
 use crate::bot::message::Message;
 use crate::bot::state::BotState;
 
-pub async fn handle_group_message(
-    _state: BotState,
-    msg: Message,
-) -> anyhow::Result<Option<Message>> {
+use crate::bot::agent::BotAgent;
+
+pub async fn handle_group_message(_: BotState, msg: Message) -> anyhow::Result<Option<Message>> {
     tracing::info!(
         group_id = msg.group_id(),
         user_id = msg.user_id(),
@@ -12,19 +11,34 @@ pub async fn handle_group_message(
         "received group message"
     );
 
-    if is_bot_request(&msg) {
-        return Ok(Some(Message::text("你好喵")));
+    let user_text = extract_prk_text(&msg);
+    if user_text.is_empty() {
+        return Ok(None);
     }
 
-    Ok(None)
+    let mut agent = BotAgent::new();
+
+    let reply = agent.respond(&user_text).await;
+
+    match reply {
+        Some(text) => Ok(Some(Message::text(text))),
+        None => Ok(None),
+    }
 }
 
-fn is_bot_request(msg: &Message) -> bool {
-    if !msg.raw_text().starts_with("/prk ") {
-        return false;
+fn extract_prk_text(msg: &Message) -> String {
+    let raw = msg.raw_text();
+    let prefix = "/prk";
+
+    let after_prefix = if let Some(rest) = raw.strip_prefix(prefix) {
+        rest.trim_start()
+    } else {
+        return String::new();
+    };
+
+    if after_prefix.is_empty() {
+        return String::from("你好");
     }
 
-    msg.segments()
-        .iter()
-        .all(|s| matches!(s, onebot_v11::MessageSegment::Text { .. }))
+    after_prefix.to_string()
 }
