@@ -40,7 +40,7 @@ where
         let mut tool_defs = vec![];
 
         for tool in tools.into_iter() {
-            let def = tool.defination();
+            let def = tool.def();
 
             tool_defs.push(def.clone());
             self.tools.insert(def.name.clone(), tool);
@@ -59,7 +59,7 @@ where
 
         let mut defs = Vec::with_capacity(tools.len());
         for tool in tools {
-            let def = tool.defination();
+            let def = tool.def();
             defs.push(def.clone());
             self.tools.insert(def.name.clone(), tool);
         }
@@ -141,7 +141,7 @@ where
             None => return Err(format!("tool not found: {}", call.name())),
         };
 
-        tool.execute(call.args())
+        tool.exec(call.args())
             .await
             .map(|content| ToolOutput::new(call.id(), content))
             .map_err(|e| format!("{:?}", e))
@@ -154,7 +154,7 @@ mod tests {
 
     use std::path::PathBuf;
 
-    use crate::ai::agent::tool::local::{CreateFileTool, ReadFileTool};
+    use crate::ai::agent::tool::local::fs::{CreateFileTool, ReadFileTool};
     use crate::ai::resolver::openai::OpenAiResolver;
 
     use openai_oxide::types::chat::ChatCompletionMessageParam;

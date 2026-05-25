@@ -16,7 +16,7 @@ pub async fn handle_group_message(_: BotState, msg: Message) -> anyhow::Result<O
         return Ok(None);
     }
 
-    let mut agent = BotAgent::new();
+    let mut agent = BotAgent::new()?;
 
     let reply = agent.respond(&user_text).await;
 
