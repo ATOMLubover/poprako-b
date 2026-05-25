@@ -15,31 +15,12 @@
 
 An MCP-based memory service (separate repo, no embedder) is planned as an external dependency of `b`.
 
-## Tech Stack & Rationale
+## Tech Stack
 
 - **Rust** (edition 2024) — chosen over Bun/Python due to deployment on a server with limited memory and CPU.
 - **DeepSeek** as the default LLM provider, accessed via OpenAI-compatible API.
-- **NapCat** + **OneBot v11** for QQ integration (WebSocket events, HTTP actions).
-- Key crates: `openai-oxide` (LLM client), `tokio` (async runtime), `reqwest` (HTTP), `serde`/`serde_json`.
-
-## Architecture (layers)
-
-```
-NapCat/OneBot  ──→  Bot (event filter, context holder)
-                       │
-                       ├── Agent (wake: loop / single-trigger)
-                       │      └── Resolver (pluggable trait)
-                       │             └── OpenAiResolver → DeepSeek
-                       │
-                       └── Tools (static enum dispatch)
-```
-
-- **Bot** — Owns the OneBot connection, filters incoming events, holds `Context`. See `poprako-onebot-setup`.
-- **Agent** — Wakes selectively (long-running loop or single-turn trigger) inside the Bot's context. See `poprako-agent-loop`.
-- **Resolver** — Pluggable trait that translates proprietary types to provider-specific API payloads. See `poprako-resolver-design`.
-- **Tools** — Compile-time enum defining available tools with static dispatch. See `poprako-tool-system`.
-
-For deployment specifics, see `poprako-deployment`.
+- **NapCat** + **OneBot v11** for QQ integration (reverse WebSocket events, HTTP actions).
+- Key crates: `openai-oxide`, `tokio`, `reqwest`, `serde`/`serde_json`, `onebot_v11`.
 
 ## Entrypoints
 
@@ -47,6 +28,14 @@ For deployment specifics, see `poprako-deployment`.
 |------|------|
 | `src/main.rs` | Binary entrypoint |
 | `src/lib.rs` | Library root (enables `cargo test`) |
+
+## Skills
+
+- [poprako-b-overview](.agents/skills/poprako-b-overview/SKILL.md) — Architecture, key files, trigger mechanism, prompt system, memory shards.
+- [poprako-conventions](~/.agents/skills/poprako-conventions/SKILL.md) — Coding conventions (naming, modules, visibility, errors, async).
+- [poprako-resolver](~/.agents/skills/poprako-resolver/SKILL.md) — Resolver trait, Context, Message, Action, Tool types, OpenAiResolver.
+- [poprako-http](~/.agents/skills/poprako-http/SKILL.md) — HttpClient and HttpError in `src/http.rs`.
+- [check-use-braces](.agents/skills/check-use-braces/SKILL.md) — Rust import style linting.
 
 ## Environment
 

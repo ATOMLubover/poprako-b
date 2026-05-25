@@ -1,45 +1,62 @@
 pub mod prompt;
 
-use crate::ai::agent::openai::OpenAiAgent;
-use crate::ai::resolver::context::Context;
-use crate::ai::resolver::openai::OpenAiResolver;
+use std::path::PathBuf;
+
 use openai_oxide::types::chat::{ChatCompletionMessageParam, UserContent};
 use prompt::BotPrompt;
 
+use crate::ai::agent::compact::sliding_window_compact;
+use crate::ai::agent::openai::{OpenAiAgent, OpenAiAgentBuilder};
+use crate::ai::agent::tool::local::memory::{ListMemoryShardsTool, RecallMemoryShardTool};
+use crate::ai::resolver::context::ContextBuilder;
+use crate::ai::resolver::openai::OpenAiResolver;
+
+pub fn memory_dir() -> PathBuf {
+    std::env::var("MEMORY_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("memory"))
+}
+
 pub struct BotAgent {
     agent: OpenAiAgent,
-    system_prompt: String,
 }
 
 impl BotAgent {
-    pub fn new() -> Self {
+    const MODEL_NAME: &'static str = "deepseek-v4-flash";
+
+    pub fn new() -> anyhow::Result<Self> {
         let resolver = OpenAiResolver::from_env();
-        let system_prompt = BotPrompt::assemble();
 
-        let mut cx = Context::new("deepseek-v4-flash".to_string());
-        cx.set_messages(vec![ChatCompletionMessageParam::System {
-            content: system_prompt.clone(),
-            name: None,
-        }]);
+        let system_prompt = BotPrompt::system_prompt()?;
+        let memory_dir = memory_dir();
 
-        Self {
-            agent: OpenAiAgent::from_context(cx, resolver),
-            system_prompt,
-        }
+        let cx = ContextBuilder::new(Self::MODEL_NAME)
+            .messages(vec![ChatCompletionMessageParam::System {
+                content: system_prompt,
+                name: None,
+            }])
+            .build();
+
+        let agent = OpenAiAgentBuilder::new(cx, resolver)
+            .tools(vec![
+                Box::new(ListMemoryShardsTool::new(memory_dir.clone())),
+                Box::new(RecallMemoryShardTool::new(memory_dir)),
+            ])
+            .compact(sliding_window_compact)
+            .build();
+
+        Ok(Self { agent })
     }
 
-    pub async fn respond(&mut self, user_text: &str) -> Option<String> {
-        let mut messages = vec![ChatCompletionMessageParam::System {
-            content: self.system_prompt.clone(),
-            name: None,
-        }];
-
-        messages.push(ChatCompletionMessageParam::User {
+    pub async fn try_respond(&mut self, user_text: &str, user_name: Option<String>) -> Option<String> {
+        self.agent.push_message(ChatCompletionMessageParam::User {
             content: UserContent::Text(user_text.to_string()),
-            name: None,
+            name: user_name,
         });
 
-        self.agent.set_messages(messages);
-        self.agent.run_loop().await
+        // Compact before solving to keep context within sliding window.
+        self.agent.compact();
+
+        self.agent.solve().await
     }
 }

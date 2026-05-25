@@ -2,13 +2,10 @@ run-napcat:
 	docker compose up -d napcat
 
 run-bot:
-	docker compose up -d bot
+	docker compose up -d --build bot
 
-run-stack:
-	docker compose up -d napcat bot
+run-bot-debug:
+	RUST_LOG=debug docker compose up -d --build bot
 
-build-bot:
-	DOCKER_BUILDKIT=0 docker compose build bot
-
-down:
+down-stack:
 	docker compose down

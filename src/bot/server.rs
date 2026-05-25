@@ -7,8 +7,9 @@ use onebot_v11::connect::ws_reverse::{ReverseWsConfig, ReverseWsConnect};
 use onebot_v11::event::message::Message as OneBotMessage;
 use onebot_v11::{Event, MessageSegment};
 
+use crate::bot::agent::BotAgent;
+use crate::bot::handler::handle_group_message;
 use crate::bot::message::Message;
-use crate::bot::router::Router;
 use crate::bot::state::BotState;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -79,42 +80,40 @@ impl BotServer {
         Self::reverse_websock(ReverseWebSockServerConfig::from_env()?).await
     }
 
-    pub async fn serve(self, router: Router) -> anyhow::Result<()> {
+    pub async fn serve(self) -> anyhow::Result<()> {
         let mut events = self.connection.subscribe().await;
+
+        let agent = BotAgent::new()?;
+        let mut state = BotState::new(agent);
 
         loop {
             let event = match events.recv().await {
-                Ok(event) => event,
+                Ok(event) => {
+                    tracing::debug!("received onebot event: {event:?}");
+                    event
+                }
                 Err(error) => {
                     tracing::warn!("failed to receive onebot event: {error}");
                     continue;
                 }
             };
 
-            let Some(message) = Self::extract_group_message(event) else {
-                continue;
+            let message = match Self::extract_group_message(event) {
+                Some(msg) => msg,
+                None => continue,
             };
 
             if message.user_id() == message.self_id() {
                 continue;
             }
 
-            let state = BotState::new(self.connection.clone());
-
-            let reply = match router.handle_group_message(state, message.clone()).await {
-                Ok(reply) => reply,
-                Err(error) => {
-                    tracing::error!("group message handler failed: {error:?}");
-                    continue;
-                }
-            };
-
-            let Some(reply) = reply else {
-                continue;
+            let reply = match handle_group_message(&mut state, &message).await {
+                Some(reply) => reply,
+                None => continue,
             };
 
             if let Err(error) = self.reply_to_group_message(message, reply).await {
-                tracing::error!("failed to send group reply: {error:?}");
+                tracing::error!("failed to reply to group message: {error}");
             }
         }
     }
@@ -145,6 +144,7 @@ impl BotServer {
             .context("group reply is missing source message id")?;
 
         let mut message = Vec::with_capacity(reply.segments().len() + 1);
+
         message.push(MessageSegment::reply(message_id.to_string()));
         message.extend(reply.into_segments());
 
@@ -155,6 +155,7 @@ impl BotServer {
         });
 
         self.connection.clone().call_api(payload).await?;
+
         Ok(())
     }
 }

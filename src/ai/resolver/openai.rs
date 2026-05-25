@@ -9,11 +9,11 @@ use crate::ai::resolver::context::Context;
 use crate::ai::resolver::result::{ResolveError, ResolveResult};
 use openai_oxide::types::chat::{
     ChatCompletionMessageParam, ChatCompletionRequest, FunctionCall, Tool as OxTool,
-    ToolCall as OxToolCall,
+    ToolCall as OxToolCall, ToolChoice,
 };
 use openai_oxide::{ClientConfig, OpenAI, OpenAIError};
 use serde_json::Value;
-use tracing::{Level, instrument};
+use tracing::{Level, debug, info, instrument};
 
 pub struct OpenAiResolver {
     client: OpenAI,
@@ -99,15 +99,19 @@ impl OpenAiResolver {
 impl IResolver for OpenAiResolver {
     type Message = ChatCompletionMessageParam;
 
-    #[instrument(skip(self, cx), fields(model = %cx.model()), level = Level::DEBUG)]
+    #[instrument(skip(self, cx), fields(model = %cx.model()), level = Level::INFO)]
     async fn resolve(&mut self, cx: &Context<Self::Message>) -> ResolveResult<Action<OxToolCall>> {
         let mut request =
             ChatCompletionRequest::new(cx.model().to_string(), cx.messages().to_vec());
 
-        let tools = cx.tools();
+        let tools = cx.tool_defs();
         if !tools.is_empty() {
             let ox_tools: Vec<OxTool> = tools.iter().map(Self::map_tool).collect();
-            request = request.tools(ox_tools);
+            let tool_names: Vec<&str> = ox_tools.iter().map(|t| t.function.name.as_str()).collect();
+            info!(?tool_names, tool_choice = "auto", "sending tools to LLM");
+            request = request.tools(ox_tools).tool_choice(ToolChoice::Mode("auto".into()));
+        } else {
+            info!("no tools registered, sending request without tools");
         }
 
         // Serialize to JSON and inject `reasoning_content: ""` on assistant messages
@@ -130,6 +134,13 @@ impl IResolver for OpenAiResolver {
             }
         }
 
+        debug!(
+            tool_choice = %request_value.get("tool_choice").map(|v| v.to_string()).unwrap_or_default(),
+            tools_count = %request_value.get("tools").and_then(|t| t.as_array()).map(|a| a.len()).unwrap_or(0),
+            msg_count = %request_value.get("messages").and_then(|m| m.as_array()).map(|a| a.len()).unwrap_or(0),
+            "sending request to LLM"
+        );
+
         let response_value = self
             .client
             .chat()
@@ -138,12 +149,18 @@ impl IResolver for OpenAiResolver {
             .await
             .map_err(Self::map_err)?;
 
+        debug!(?response_value, "raw LLM response");
+
         let choice = response_value["choices"]
             .as_array()
             .and_then(|choices| choices.first())
             .ok_or(ResolveError::NoChoice)?;
 
-        Ok(Self::build_action(choice))
+        debug!(?choice, "first choice from LLM");
+
+        let action = Self::build_action(choice);
+        info!(reason = ?action.reason, has_tool_calls = action.tool_calls.is_some(), "resolver produced action");
+        Ok(action)
     }
 }
 

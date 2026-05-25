@@ -31,4 +31,8 @@ pub trait IMessage:
     type ToolCall: IToolCall + std::fmt::Debug;
 
     fn message_ref(&self) -> MessageRef<'_, Self::ToolCall>;
+
+    fn is_user(&self) -> bool {
+        matches!(self.message_ref(), MessageRef::User { .. })
+    }
 }

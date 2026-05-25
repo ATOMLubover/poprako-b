@@ -10,7 +10,7 @@ where
 {
     model: String,
     messages: Vec<M>,
-    tools: Vec<ToolDef>,
+    tool_defs: Vec<ToolDef>,
 }
 
 impl<M> Context<M>
@@ -21,7 +21,7 @@ where
         Self {
             model,
             messages: Vec::new(),
-            tools: Vec::new(),
+            tool_defs: Vec::new(),
         }
     }
 
@@ -33,16 +33,20 @@ where
         self.messages.push(message);
     }
 
+    pub fn take_messages(&mut self) -> Vec<M> {
+        std::mem::take(&mut self.messages)
+    }
+
     pub fn set_messages(&mut self, messages: Vec<M>) {
         self.messages = messages;
     }
 
-    pub fn tools(&self) -> &[ToolDef] {
-        &self.tools
+    pub fn tool_defs(&self) -> &[ToolDef] {
+        &self.tool_defs
     }
 
-    pub fn set_tools(&mut self, tools: Vec<ToolDef>) {
-        self.tools = tools;
+    pub fn set_tool_defs(&mut self, tool_defs: Vec<ToolDef>) {
+        self.tool_defs = tool_defs;
     }
 
     pub fn model(&self) -> &str {
@@ -51,5 +55,45 @@ where
 
     pub fn set_model(&mut self, model: String) {
         self.model = model;
+    }
+}
+
+pub struct ContextBuilder<M>
+where
+    M: IMessage + 'static,
+{
+    model: String,
+    messages: Vec<M>,
+    tool_defs: Vec<ToolDef>,
+}
+
+impl<M> ContextBuilder<M>
+where
+    M: IMessage + 'static,
+{
+    pub fn new(model: impl Into<String>) -> Self {
+        Self {
+            model: model.into(),
+            messages: Vec::new(),
+            tool_defs: Vec::new(),
+        }
+    }
+
+    pub fn messages(mut self, messages: Vec<M>) -> Self {
+        self.messages = messages;
+        self
+    }
+
+    pub fn tool_defs(mut self, tool_defs: Vec<ToolDef>) -> Self {
+        self.tool_defs = tool_defs;
+        self
+    }
+
+    pub fn build(self) -> Context<M> {
+        Context {
+            model: self.model,
+            messages: self.messages,
+            tool_defs: self.tool_defs,
+        }
     }
 }

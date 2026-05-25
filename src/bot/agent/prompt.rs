@@ -1,12 +1,14 @@
+use crate::bot::agent::memory_dir;
+
 pub struct BotPrompt;
 
 impl BotPrompt {
-    pub fn assemble() -> String {
-        format!(
-            "{}\n\n{}\n\n{}",
-            include_str!("prompts/persona.txt"),
-            include_str!("prompts/rules.txt"),
-            include_str!("prompts/knowledge.txt"),
-        )
+    pub fn system_prompt() -> anyhow::Result<String> {
+        let dir = memory_dir().join("prompts");
+
+        let persona = std::fs::read_to_string(dir.join("persona.txt"))?;
+        let rules = std::fs::read_to_string(dir.join("rules.txt"))?;
+
+        Ok(format!("{}\n\n{}", persona, rules))
     }
 }

@@ -5,6 +5,8 @@ pub mod context;
 pub mod message;
 pub mod tool;
 
+pub use context::ContextBuilder;
+
 use crate::ai::resolver::action::Action;
 use crate::ai::resolver::context::Context;
 use crate::ai::resolver::message::IMessage;

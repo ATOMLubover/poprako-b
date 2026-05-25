@@ -9,8 +9,10 @@ use crate::ai::resolver::message::{IMessage, MessageRef};
 use crate::ai::resolver::tool::IToolCall;
 
 pub mod openai;
-
+pub mod compact;
 pub mod tool;
+
+pub type Compact<M> = fn(&mut Context<M>);
 
 pub struct Agent<M, R>
 where
@@ -21,6 +23,8 @@ where
     tools: HashMap<String, DynTool>,
 
     resolver: R,
+
+    compact: Option<Compact<M>>,
 }
 
 impl<M, R> Agent<M, R>
@@ -33,6 +37,7 @@ where
             context: cx,
             tools: HashMap::new(),
             resolver,
+            compact: None,
         }
     }
 
@@ -40,17 +45,25 @@ where
         let mut tool_defs = vec![];
 
         for tool in tools.into_iter() {
-            let def = tool.defination();
+            let def = tool.def();
 
             tool_defs.push(def.clone());
             self.tools.insert(def.name.clone(), tool);
         }
 
-        self.context.set_tools(tool_defs);
+        self.context.set_tool_defs(tool_defs);
+    }
+
+    pub fn push_message(&mut self, message: M) {
+        self.context.push_message(message);
     }
 
     pub fn set_messages(&mut self, messages: Vec<M>) {
         self.context.set_messages(messages);
+    }
+
+    pub fn set_compact(&mut self, compact: Compact<M>) {
+        self.compact = Some(compact);
     }
 
     /// Replace all registered tools, returning the old ones.
@@ -59,18 +72,18 @@ where
 
         let mut defs = Vec::with_capacity(tools.len());
         for tool in tools {
-            let def = tool.defination();
+            let def = tool.def();
             defs.push(def.clone());
             self.tools.insert(def.name.clone(), tool);
         }
-        self.context.set_tools(defs);
+        self.context.set_tool_defs(defs);
 
         old
     }
 
     /// Run the agent loop. Returns the final assistant text response, or `None`
     /// if the resolver failed before producing a final answer.
-    pub async fn run_loop(&mut self) -> Option<String> {
+    pub async fn solve(&mut self) -> Option<String> {
         loop {
             let action = match self.resolver.resolve(&self.context).await {
                 Ok(action) => {
@@ -135,16 +148,76 @@ where
         }
     }
 
+    pub fn compact(&mut self) {
+        if let Some(compact) = self.compact {
+            compact(&mut self.context);
+        }
+    }
+
     async fn dispatch_tool_call(&mut self, call: &M::ToolCall) -> Result<ToolOutput, String> {
         let tool = match self.tools.get_mut(call.name()) {
             Some(tool) => tool,
             None => return Err(format!("tool not found: {}", call.name())),
         };
 
-        tool.execute(call.args())
+        tool.exec(call.args())
             .await
             .map(|content| ToolOutput::new(call.id(), content))
             .map_err(|e| format!("{:?}", e))
+    }
+}
+
+pub struct AgentBuilder<M, R>
+where
+    M: IMessage + 'static,
+    R: IResolver<Message = M> + Send,
+{
+    context: Context<M>,
+    resolver: R,
+    tools: Vec<DynTool>,
+    compact: Option<Compact<M>>,
+}
+
+impl<M, R> AgentBuilder<M, R>
+where
+    M: IMessage + 'static,
+    R: IResolver<Message = M> + Send,
+{
+    pub fn new(context: Context<M>, resolver: R) -> Self {
+        Self {
+            context,
+            resolver,
+            tools: Vec::new(),
+            compact: None,
+        }
+    }
+
+    pub fn tools(mut self, tools: Vec<DynTool>) -> Self {
+        self.tools = tools;
+        self
+    }
+
+    pub fn compact(mut self, compact: Compact<M>) -> Self {
+        self.compact = Some(compact);
+        self
+    }
+
+    pub fn build(self) -> Agent<M, R> {
+        let mut agent = Agent::from_context(self.context, self.resolver);
+        agent.compact = self.compact;
+        if !self.tools.is_empty() {
+            let mut tool_defs = Vec::with_capacity(self.tools.len());
+            for tool in &self.tools {
+                tool_defs.push(tool.def().clone());
+            }
+            agent.context.set_tool_defs(tool_defs);
+            for tool in self.tools {
+                let def = tool.def();
+                agent.tools.insert(def.name.clone(), tool);
+            }
+        }
+
+        agent
     }
 }
 
@@ -154,7 +227,8 @@ mod tests {
 
     use std::path::PathBuf;
 
-    use crate::ai::agent::tool::local::{CreateFileTool, ReadFileTool};
+    use crate::ai::agent::tool::local::fs::{CreateFileTool, ReadFileTool};
+    use crate::ai::resolver::context::ContextBuilder;
     use crate::ai::resolver::openai::OpenAiResolver;
 
     use openai_oxide::types::chat::ChatCompletionMessageParam;
@@ -176,34 +250,36 @@ mod tests {
 
         let resolver = OpenAiResolver::from_env();
 
-        let mut cx = Context::new("deepseek-v4-flash".to_string());
-        cx.set_messages(vec![
-            ChatCompletionMessageParam::System {
-                content:
-                    "You are a helpful assistant. Use the create_file tool to create files and \
-                          the read_file tool to read them. The path parameter is relative to the \
-                          base directory. When asked to create a file, use the tool directly - \
-                          do not ask for confirmation."
-                        .to_string(),
-                name: None,
-            },
-            ChatCompletionMessageParam::User {
-                content: UserContent::Text(
-                    "Create a file at 'hello.txt' with the content 'hello from agent', \
-                     then read it back to confirm the content."
-                        .to_string(),
-                ),
-                name: None,
-            },
-        ]);
+        let cx = ContextBuilder::new("deepseek-v4-flash")
+            .messages(vec![
+                ChatCompletionMessageParam::System {
+                    content:
+                        "You are a helpful assistant. Use the create_file tool to create files and \
+                              the read_file tool to read them. The path parameter is relative to the \
+                              base directory. When asked to create a file, use the tool directly - \
+                              do not ask for confirmation."
+                            .to_string(),
+                    name: None,
+                },
+                ChatCompletionMessageParam::User {
+                    content: UserContent::Text(
+                        "Create a file at 'hello.txt' with the content 'hello from agent', \
+                         then read it back to confirm the content."
+                            .to_string(),
+                    ),
+                    name: None,
+                },
+            ])
+            .build();
 
-        let mut agent = Agent::from_context(cx, resolver);
-        agent.set_tools(vec![
-            Box::new(CreateFileTool::new(output_dir.clone())),
-            Box::new(ReadFileTool::new(output_dir)),
-        ]);
+        let mut agent = AgentBuilder::new(cx, resolver)
+            .tools(vec![
+                Box::new(CreateFileTool::new(output_dir.clone())),
+                Box::new(ReadFileTool::new(output_dir)),
+            ])
+            .build();
 
-        let result = agent.run_loop().await;
+        let result = agent.solve().await;
         assert!(result.is_some(), "agent should return a final response");
         assert!(
             target_file.exists(),

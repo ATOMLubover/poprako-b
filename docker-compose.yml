@@ -6,6 +6,7 @@ services:
         max-size: "10m"
         max-file: "3"
     environment:
+      - WEBUI_TOKEN=${WEBUI_TOKEN}
       - NAPCAT_UID=${NAPCAT_UID:-1000}
       - NAPCAT_GID=${NAPCAT_GID:-1000}
       - ACCOUNT=${ACCOUNT}
@@ -38,6 +39,8 @@ services:
     restart: always
     env_file:
       - .env
+    volumes:
+      - ./memory:/app/memory
     environment:
       - RUST_LOG=${RUST_LOG:-info}
       - NAPCAT_REVERSE_WS_HOST=0.0.0.0

@@ -2,7 +2,7 @@ use std::path::{Component, Path, PathBuf};
 
 use crate::ai::agent::tool::ITool;
 use crate::ai::agent::tool::result::{ToolError, ToolResult};
-use crate::ai::resolver::tool::{ParamDefBuilder, PropDef, ToolDef, ToolDefBuilder};
+use crate::ai::resolver::tool::{ParamDef, PropDef, ToolDef};
 
 pub struct CreateFileTool {
     /// base_dir prevents the tool from creating files outside of this directory.
@@ -34,7 +34,7 @@ impl CreateFileTool {
 #[async_trait::async_trait]
 impl ITool for CreateFileTool {
     fn def(&self) -> ToolDef {
-        let params = ParamDefBuilder::new("object".to_string())
+        let params = ParamDef::new("object")
             .with_properties(vec![
                 (
                     "path",
@@ -53,16 +53,14 @@ impl ITool for CreateFileTool {
                     },
                 ),
             ])
-            .with_required(vec!["path".to_string(), "content".to_string()])
-            .build();
+            .with_required(vec!["path".to_string(), "content".to_string()]);
 
-        ToolDefBuilder::new(
-            Self::TOOL_NAME.to_string(),
-            "Create a file with the specified content at the given relative path.".to_string(),
+        ToolDef::new(
+            Self::TOOL_NAME,
+            "Create a file with the specified content at the given relative path.",
             params,
         )
         .with_strict(true)
-        .build()
     }
 
     async fn exec(&mut self, args: &str) -> ToolResult {
@@ -129,7 +127,7 @@ fn check_path_traversal(path: &str) -> Result<PathBuf, ToolError> {
 #[async_trait::async_trait]
 impl ITool for ReadFileTool {
     fn def(&self) -> ToolDef {
-        let params = ParamDefBuilder::new("object".to_string())
+        let params = ParamDef::new("object")
             .with_properties(vec![(
                 "path",
                 PropDef::String {
@@ -138,16 +136,14 @@ impl ITool for ReadFileTool {
                     r#enum: None,
                 },
             )])
-            .with_required(vec!["path".to_string()])
-            .build();
+            .with_required(vec!["path".to_string()]);
 
-        ToolDefBuilder::new(
-            Self::TOOL_NAME.to_string(),
-            "Read the contents of a file at the given relative path.".to_string(),
+        ToolDef::new(
+            Self::TOOL_NAME,
+            "Read the contents of a file at the given relative path.",
             params,
         )
         .with_strict(true)
-        .build()
     }
 
     async fn exec(&mut self, args: &str) -> ToolResult {
@@ -180,10 +176,10 @@ mod tests {
 
         assert_eq!(def.name, "create_file");
         assert_eq!(def.strict, Some(true));
-        assert!(def.params.props.contains_key("path"));
-        assert!(def.params.props.contains_key("content"));
+        assert!(def.parameters.props.contains_key("path"));
+        assert!(def.parameters.props.contains_key("content"));
         assert_eq!(
-            def.params.required,
+            def.parameters.required,
             Some(vec!["path".to_string(), "content".to_string()])
         );
     }
@@ -243,8 +239,8 @@ mod tests {
 
         assert_eq!(def.name, "read_file");
         assert_eq!(def.strict, Some(true));
-        assert!(def.params.props.contains_key("path"));
-        assert_eq!(def.params.required, Some(vec!["path".to_string()]));
+        assert!(def.parameters.props.contains_key("path"));
+        assert_eq!(def.parameters.required, Some(vec!["path".to_string()]));
     }
 
     #[tokio::test]
