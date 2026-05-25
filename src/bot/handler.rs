@@ -14,9 +14,11 @@ pub async fn handle_group_message(state: &mut BotState, msg: &Message) -> Option
         None => return None,
     };
 
+    let nickname = msg.nickname().map(|n| n.to_string());
+
     state
         .agent_mut()
-        .try_respond(&user_text)
+        .try_respond(&user_text, nickname)
         .await
         .or_else(|| Some("X﹏X 白杨子可能出现了点问题，无法回答这个问题哦".to_string()))
         .map(Message::text)

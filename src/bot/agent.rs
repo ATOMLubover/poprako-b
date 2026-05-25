@@ -48,10 +48,10 @@ impl BotAgent {
         Ok(Self { agent })
     }
 
-    pub async fn try_respond(&mut self, user_text: &str) -> Option<String> {
+    pub async fn try_respond(&mut self, user_text: &str, user_name: Option<String>) -> Option<String> {
         self.agent.push_message(ChatCompletionMessageParam::User {
             content: UserContent::Text(user_text.to_string()),
-            name: None,
+            name: user_name,
         });
 
         // Compact before solving to keep context within sliding window.
