@@ -2,11 +2,13 @@ use std::collections::HashMap;
 
 use crate::ai::agent::tool::DynTool;
 use crate::ai::agent::tool::result::ToolOutput;
+use crate::ai::resolver::ContextBuilder;
 use crate::ai::resolver::IResolver;
 use crate::ai::resolver::action::Reason;
 use crate::ai::resolver::context::Context;
 use crate::ai::resolver::message::{IMessage, MessageRef};
 use crate::ai::resolver::tool::IToolCall;
+use crate::ai::resolver::tool::ToolDef;
 
 pub mod openai;
 
@@ -34,6 +36,10 @@ where
             tools: HashMap::new(),
             resolver,
         }
+    }
+
+    pub fn builder(model: impl Into<String>, resolver: R) -> AgentBuilder<M, R> {
+        AgentBuilder::new(model, resolver)
     }
 
     pub fn set_tools(&mut self, tools: Vec<DynTool>) {
@@ -148,6 +154,55 @@ where
     }
 }
 
+pub struct AgentBuilder<M, R>
+where
+    M: IMessage + 'static,
+    R: IResolver<Message = M> + Send,
+{
+    context_builder: ContextBuilder<M>,
+    resolver: R,
+    tools: Vec<DynTool>,
+}
+
+impl<M, R> AgentBuilder<M, R>
+where
+    M: IMessage + 'static,
+    R: IResolver<Message = M> + Send,
+{
+    pub fn new(model: impl Into<String>, resolver: R) -> Self {
+        Self {
+            context_builder: ContextBuilder::new(model),
+            resolver,
+            tools: Vec::new(),
+        }
+    }
+
+    pub fn messages(mut self, messages: Vec<M>) -> Self {
+        self.context_builder = self.context_builder.messages(messages);
+        self
+    }
+
+    pub fn context_tools(mut self, tools: Vec<ToolDef>) -> Self {
+        self.context_builder = self.context_builder.tools(tools);
+        self
+    }
+
+    pub fn tools(mut self, tools: Vec<DynTool>) -> Self {
+        self.tools = tools;
+        self
+    }
+
+    pub fn build(self) -> Agent<M, R> {
+        let mut agent = Agent::from_context(self.context_builder.build(), self.resolver);
+        if !self.tools.is_empty() {
+            // set_tools calls context.set_tools internally.
+            // This is fine because agent.context has no tools yet.
+            agent.set_tools(self.tools);
+        }
+        agent
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -176,32 +231,31 @@ mod tests {
 
         let resolver = OpenAiResolver::from_env();
 
-        let mut cx = Context::new("deepseek-v4-flash".to_string());
-        cx.set_messages(vec![
-            ChatCompletionMessageParam::System {
-                content:
-                    "You are a helpful assistant. Use the create_file tool to create files and \
-                          the read_file tool to read them. The path parameter is relative to the \
-                          base directory. When asked to create a file, use the tool directly - \
-                          do not ask for confirmation."
-                        .to_string(),
-                name: None,
-            },
-            ChatCompletionMessageParam::User {
-                content: UserContent::Text(
-                    "Create a file at 'hello.txt' with the content 'hello from agent', \
-                     then read it back to confirm the content."
-                        .to_string(),
-                ),
-                name: None,
-            },
-        ]);
-
-        let mut agent = Agent::from_context(cx, resolver);
-        agent.set_tools(vec![
-            Box::new(CreateFileTool::new(output_dir.clone())),
-            Box::new(ReadFileTool::new(output_dir)),
-        ]);
+        let mut agent = Agent::builder("deepseek-v4-flash", resolver)
+            .messages(vec![
+                ChatCompletionMessageParam::System {
+                    content:
+                        "You are a helpful assistant. Use the create_file tool to create files and \
+                              the read_file tool to read them. The path parameter is relative to the \
+                              base directory. When asked to create a file, use the tool directly - \
+                              do not ask for confirmation."
+                            .to_string(),
+                    name: None,
+                },
+                ChatCompletionMessageParam::User {
+                    content: UserContent::Text(
+                        "Create a file at 'hello.txt' with the content 'hello from agent', \
+                         then read it back to confirm the content."
+                            .to_string(),
+                    ),
+                    name: None,
+                },
+            ])
+            .tools(vec![
+                Box::new(CreateFileTool::new(output_dir.clone())),
+                Box::new(ReadFileTool::new(output_dir)),
+            ])
+            .build();
 
         let result = agent.run_loop().await;
         assert!(result.is_some(), "agent should return a final response");

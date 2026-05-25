@@ -25,6 +25,10 @@ where
         }
     }
 
+    pub fn builder(model: impl Into<String>) -> ContextBuilder<M> {
+        ContextBuilder::new(model)
+    }
+
     pub fn messages(&self) -> &[M] {
         &self.messages
     }
@@ -51,5 +55,45 @@ where
 
     pub fn set_model(&mut self, model: String) {
         self.model = model;
+    }
+}
+
+pub struct ContextBuilder<M>
+where
+    M: IMessage + 'static,
+{
+    model: String,
+    messages: Vec<M>,
+    tools: Vec<ToolDef>,
+}
+
+impl<M> ContextBuilder<M>
+where
+    M: IMessage + 'static,
+{
+    pub fn new(model: impl Into<String>) -> Self {
+        Self {
+            model: model.into(),
+            messages: Vec::new(),
+            tools: Vec::new(),
+        }
+    }
+
+    pub fn messages(mut self, messages: Vec<M>) -> Self {
+        self.messages = messages;
+        self
+    }
+
+    pub fn tools(mut self, tools: Vec<ToolDef>) -> Self {
+        self.tools = tools;
+        self
+    }
+
+    pub fn build(self) -> Context<M> {
+        Context {
+            model: self.model,
+            messages: self.messages,
+            tools: self.tools,
+        }
     }
 }
