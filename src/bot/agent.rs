@@ -22,7 +22,7 @@ pub struct BotAgent {
 }
 
 impl BotAgent {
-    const MODEL_NAME: &'static str = "deepseek-v4-flash[1m]";
+    const MODEL_NAME: &'static str = "deepseek-v4-flash";
 
     pub fn new() -> anyhow::Result<Self> {
         let resolver = OpenAiResolver::from_env();

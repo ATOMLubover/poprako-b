@@ -18,6 +18,7 @@ pub async fn handle_group_message(state: &mut BotState, msg: &Message) -> Option
         .agent_mut()
         .try_respond(&user_text)
         .await
+        .or_else(|| Some("X﹏X 白杨子可能出现了点问题，无法回答这个问题哦".to_string()))
         .map(Message::text)
 }
 
