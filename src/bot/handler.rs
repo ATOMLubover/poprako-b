@@ -16,11 +16,12 @@ pub async fn handle_group_message(state: &mut BotState, msg: &Message) -> Option
         None => return None,
     };
 
-    let nickname = msg.nickname().map(|n| n.to_string());
+    let nickname = msg.nickname().unwrap_or_default().to_string();
+    let user_qid = msg.user_id().map(|id| id.to_string()).unwrap_or_default();
 
     state
         .agent_mut()
-        .try_respond(&user_text, nickname)
+        .try_respond(&nickname, &user_qid, &user_text)
         .await
         .or_else(|| Some("X﹏X 白杨子可能出现了点问题，无法回答这个问题哦".to_string()))
         .map(Message::text)

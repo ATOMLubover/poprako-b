@@ -28,6 +28,10 @@ fn pretty_json<T: Serialize>(v: &T) -> ToolResult {
         .map_err(|e| ToolError::exec_fail(format!("failed to serialize output: {e}")))
 }
 
+fn workflow_phase_enum() -> Option<Vec<f64>> {
+    Some(vec![0.0, 1.0, 2.0])
+}
+
 #[derive(Deserialize)]
 struct PagingArgs {
     #[serde(default = "default_offset")]
@@ -154,6 +158,7 @@ impl ITool for ListTeamWorksetsTool {
     }
 }
 
+// TODO: named phases(i.e. pending/ongoing/completed).
 #[derive(Deserialize)]
 struct WorksetComicsArgs {
     workset_id: String,
@@ -210,42 +215,42 @@ impl ITool for ListWorksetComicsTool {
                     "upload_phase",
                     PropDef::Number {
                         desc: "Optional workflow phase filter, int".to_string(),
-                        r#enum: None,
+                        r#enum: workflow_phase_enum(),
                     },
                 ),
                 (
                     "translate_phase",
                     PropDef::Number {
                         desc: "Optional workflow phase filter, int".to_string(),
-                        r#enum: None,
+                        r#enum: workflow_phase_enum(),
                     },
                 ),
                 (
                     "proofread_phase",
                     PropDef::Number {
                         desc: "Optional workflow phase filter, int".to_string(),
-                        r#enum: None,
+                        r#enum: workflow_phase_enum(),
                     },
                 ),
                 (
                     "typeset_phase",
                     PropDef::Number {
                         desc: "Optional workflow phase filter, int".to_string(),
-                        r#enum: None,
+                        r#enum: workflow_phase_enum(),
                     },
                 ),
                 (
                     "review_phase",
                     PropDef::Number {
                         desc: "Optional workflow phase filter, int".to_string(),
-                        r#enum: None,
+                        r#enum: workflow_phase_enum(),
                     },
                 ),
                 (
                     "publish_phase",
                     PropDef::Number {
                         desc: "Optional workflow phase filter, int".to_string(),
-                        r#enum: None,
+                        r#enum: workflow_phase_enum(),
                     },
                 ),
                 (

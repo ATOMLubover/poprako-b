@@ -1,3 +1,4 @@
+use rand::Rng;
 use std::env;
 use std::sync::Arc;
 
@@ -111,6 +112,10 @@ impl BotServer {
                 Some(reply) => reply,
                 None => continue,
             };
+
+            // Random delay 2–5 seconds to avoid rate-limiting.
+            let delay_ms = rand::thread_rng().gen_range(2000..5000);
+            tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
 
             if let Err(error) = self.reply_to_group_message(message, reply).await {
                 tracing::error!("failed to reply to group message: {error}");

@@ -16,4 +16,5 @@ serde_yaml = "0.9.34"
 tokio = { version = "1.52.3", features = ["macros", "rt-multi-thread"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "fmt", "time"] }
+rand = "0.8.5"
 url = "2.5.8"

@@ -2,6 +2,7 @@ mod prompt;
 mod tool;
 mod value_object;
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use openai_oxide::types::chat::{ChatCompletionMessageParam, UserContent};
@@ -21,6 +22,8 @@ pub fn memory_dir() -> PathBuf {
 
 pub struct BotAgent {
     agent: OpenAiAgent,
+    /// Map from user_qid to poprako-s user_id.
+    id_transform: HashMap<String, String>,
 }
 
 impl BotAgent {
@@ -44,20 +47,34 @@ impl BotAgent {
             .compact(sliding_window_compact)
             .build();
 
-        Ok(Self { agent })
+        Ok(Self {
+            agent,
+            id_transform: HashMap::new(),
+        })
     }
 
     pub async fn try_respond(
         &mut self,
+        user_nickname: &str,
+        user_qid: &str,
         user_text: &str,
-        user_name: Option<String>,
     ) -> Option<String> {
+        // Transform user_qid to user_id for better readability in the prompt,
+        // as PopRaKo-B uses user_id in PopRaKo-S tools.
+        let name = self
+            .id_transform
+            .get(user_qid)
+            .cloned()
+            .map(|s| format!("{} (poprako-s user_id: {})", user_nickname, s))
+            .unwrap_or_else(|| format!("{} (no poprako-s user_id", user_nickname));
+
         self.agent.push_message(ChatCompletionMessageParam::User {
             content: UserContent::Text(user_text.to_string()),
-            name: user_name,
+            name: Some(name),
         });
 
         // Compact before solving to keep context within sliding window.
+        // TODO: compact AFTER solving.
         self.agent.compact();
 
         self.agent.solve().await

@@ -993,6 +993,7 @@ dependencies = [
  "dotenvy",
  "onebot_v11",
  "openai-oxide",
+ "rand 0.8.6",
  "reqwest 0.13.3",
  "serde",
  "serde_json",
