@@ -1,6 +1,7 @@
 // HTTP client and server implementations for app.
 
 use reqwest::Client;
+use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue};
 use url::Url;
 
 use crate::http::result::HttpResult;
@@ -22,27 +23,79 @@ impl HttpClient {
     where
         R: serde::de::DeserializeOwned,
     {
-        let url = self.base_url.join(path)?;
-        let response = self.reqwest.get(url).send().await?;
+        self.get_with_query::<R>(path, &[], None).await
+    }
+
+    pub async fn get_with_query<R>(
+        &self,
+        path: &str,
+        query: &[(String, String)],
+        bearer_token: Option<&str>,
+    ) -> HttpResult<R>
+    where
+        R: serde::de::DeserializeOwned,
+    {
+        let mut url = self.base_url.join(path)?;
+        if !query.is_empty() {
+            let mut pairs = url.query_pairs_mut();
+            for (k, v) in query {
+                pairs.append_pair(k, v);
+            }
+        }
+
+        let mut req = self.reqwest.get(url);
+        if let Some(token) = bearer_token {
+            req = req.header(AUTHORIZATION, format!("Bearer {token}"));
+        }
+
+        let response = req.send().await?;
 
         Ok(response.json().await?)
     }
 
-    // pub async fn post<P, R>(&self, path: &str, payload: &P) -> HttpResult<R>
-    // where
-    //     P: serde::ser::Serialize,
-    //     R: serde::de::DeserializeOwned,
-    // {
-    //     let url = self.base_url.join(path)?;
-    //     let response = self.reqwest.post(url).json(payload).send().await?;
-    //
-    //     Ok(response.json().await?)
-    // }
+    pub async fn post<P, R>(
+        &self,
+        path: &str,
+        payload: &P,
+        query: &[(String, String)],
+        bearer_token: Option<&str>,
+    ) -> HttpResult<R>
+    where
+        P: serde::ser::Serialize,
+        R: serde::de::DeserializeOwned,
+    {
+        let mut url = self.base_url.join(path)?;
+        if !query.is_empty() {
+            let mut pairs = url.query_pairs_mut();
+            for (k, v) in query {
+                pairs.append_pair(k, v);
+            }
+        }
+
+        let mut headers = HeaderMap::new();
+        headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+        if let Some(token) = bearer_token {
+            let value = HeaderValue::from_str(&format!("Bearer {token}"))
+                .map_err(|e| result::HttpError::Unknown(e.to_string()))?;
+            headers.insert(AUTHORIZATION, value);
+        }
+
+        let response = self
+            .reqwest
+            .post(url)
+            .headers(headers)
+            .json(payload)
+            .send()
+            .await?;
+
+        Ok(response.json().await?)
+    }
 }
 
 pub mod result {
     use url::ParseError;
 
+    #[derive(Debug)]
     pub enum HttpError {
         InvalidUrl(String),
         Timeout,

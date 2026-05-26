@@ -40,9 +40,10 @@ fn extract_user_text(msg: &Message) -> Option<String> {
 
 /// Extract text after @bot at the beginning of the message (skipping Reply segments).
 fn try_extract_at(msg: &Message, self_id: i64) -> Option<String> {
-    let mut iter = msg.segments().iter().skip_while(|seg| {
-        matches!(seg, MessageSegment::Reply { .. })
-    });
+    let mut iter = msg
+        .segments()
+        .iter()
+        .skip_while(|seg| matches!(seg, MessageSegment::Reply { .. }));
 
     match iter.next()? {
         MessageSegment::At { data } if data.qq == self_id.to_string() => {}

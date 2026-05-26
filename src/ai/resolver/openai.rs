@@ -109,7 +109,9 @@ impl IResolver for OpenAiResolver {
             let ox_tools: Vec<OxTool> = tools.iter().map(Self::map_tool).collect();
             let tool_names: Vec<&str> = ox_tools.iter().map(|t| t.function.name.as_str()).collect();
             info!(?tool_names, tool_choice = "auto", "sending tools to LLM");
-            request = request.tools(ox_tools).tool_choice(ToolChoice::Mode("auto".into()));
+            request = request
+                .tools(ox_tools)
+                .tool_choice(ToolChoice::Mode("auto".into()));
         } else {
             info!("no tools registered, sending request without tools");
         }

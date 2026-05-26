@@ -72,9 +72,8 @@ impl ITool for ListMemoryShardsTool {
             return Ok("No memory shards directory found.".to_string());
         }
 
-        let dir = std::fs::read_dir(&self.shards_dir).map_err(|e| {
-            ToolError::exec_fail(format!("Failed to read shards directory: {e}"))
-        })?;
+        let dir = std::fs::read_dir(&self.shards_dir)
+            .map_err(|e| ToolError::exec_fail(format!("Failed to read shards directory: {e}")))?;
 
         for entry in dir {
             let entry = entry.map_err(|e| {
@@ -156,9 +155,8 @@ impl ITool for RecallMemoryShardTool {
     }
 
     async fn exec(&mut self, args: &str) -> ToolResult {
-        let v: serde_json::Value = serde_json::from_str(args).map_err(|e| {
-            ToolError::args_schema(format!("Invalid JSON args: {e}"))
-        })?;
+        let v: serde_json::Value = serde_json::from_str(args)
+            .map_err(|e| ToolError::args_schema(format!("Invalid JSON args: {e}")))?;
 
         let shard_name = v
             .get("shard_name")

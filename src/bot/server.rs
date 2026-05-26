@@ -83,7 +83,7 @@ impl BotServer {
     pub async fn serve(self) -> anyhow::Result<()> {
         let mut events = self.connection.subscribe().await;
 
-        let agent = BotAgent::new()?;
+        let agent = BotAgent::new().await?;
         let mut state = BotState::new(agent);
 
         loop {

@@ -6,10 +6,10 @@ use std::path::PathBuf;
 
 use openai_oxide::types::chat::{ChatCompletionMessageParam, UserContent};
 use prompt::BotPrompt;
+use tool::build_tools;
 
 use crate::ai::agent::compact::sliding_window_compact;
 use crate::ai::agent::openai::{OpenAiAgent, OpenAiAgentBuilder};
-use crate::ai::agent::tool::local::memory::{ListMemoryShardsTool, RecallMemoryShardTool};
 use crate::ai::resolver::context::ContextBuilder;
 use crate::ai::resolver::openai::OpenAiResolver;
 
@@ -26,11 +26,11 @@ pub struct BotAgent {
 impl BotAgent {
     const MODEL_NAME: &'static str = "deepseek-v4-flash";
 
-    pub fn new() -> anyhow::Result<Self> {
+    pub async fn new() -> anyhow::Result<Self> {
         let resolver = OpenAiResolver::from_env();
 
         let system_prompt = BotPrompt::system_prompt()?;
-        let memory_dir = memory_dir();
+        let tools = build_tools().await;
 
         let cx = ContextBuilder::new(Self::MODEL_NAME)
             .messages(vec![ChatCompletionMessageParam::System {
@@ -40,10 +40,7 @@ impl BotAgent {
             .build();
 
         let agent = OpenAiAgentBuilder::new(cx, resolver)
-            .tools(vec![
-                Box::new(ListMemoryShardsTool::new(memory_dir.clone())),
-                Box::new(RecallMemoryShardTool::new(memory_dir)),
-            ])
+            .tools(tools)
             .compact(sliding_window_compact)
             .build();
 
