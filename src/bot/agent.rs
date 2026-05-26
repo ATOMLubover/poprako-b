@@ -1,4 +1,6 @@
-pub mod prompt;
+mod prompt;
+mod tool;
+mod value_object;
 
 use std::path::PathBuf;
 
@@ -48,7 +50,11 @@ impl BotAgent {
         Ok(Self { agent })
     }
 
-    pub async fn try_respond(&mut self, user_text: &str, user_name: Option<String>) -> Option<String> {
+    pub async fn try_respond(
+        &mut self,
+        user_text: &str,
+        user_name: Option<String>,
+    ) -> Option<String> {
         self.agent.push_message(ChatCompletionMessageParam::User {
             content: UserContent::Text(user_text.to_string()),
             name: user_name,

@@ -28,16 +28,16 @@ impl HttpClient {
         Ok(response.json().await?)
     }
 
-    pub async fn post<P, R>(&self, path: &str, payload: &P) -> HttpResult<R>
-    where
-        P: serde::ser::Serialize,
-        R: serde::de::DeserializeOwned,
-    {
-        let url = self.base_url.join(path)?;
-        let response = self.reqwest.post(url).json(payload).send().await?;
-
-        Ok(response.json().await?)
-    }
+    // pub async fn post<P, R>(&self, path: &str, payload: &P) -> HttpResult<R>
+    // where
+    //     P: serde::ser::Serialize,
+    //     R: serde::de::DeserializeOwned,
+    // {
+    //     let url = self.base_url.join(path)?;
+    //     let response = self.reqwest.post(url).json(payload).send().await?;
+    //
+    //     Ok(response.json().await?)
+    // }
 }
 
 pub mod result {
