@@ -6,7 +6,9 @@ use std::sync::Arc;
 use url::Url;
 
 use crate::ai::agent::tool::DynTool;
-use crate::ai::agent::tool::local::memory::{ListMemoryShardsTool, RecallMemoryShardTool};
+use crate::ai::agent::tool::local::memory::{
+    GenerateMemoryShardTool, ListMemoryShardsTool, RecallMemoryShardTool,
+};
 use crate::bot::agent::memory_dir;
 use crate::bot::agent::tool::poprako_s::{
     GetComicPinnedChapterTool, ListChapterAssignmentsTool, ListComicChaptersTool,
@@ -19,7 +21,8 @@ pub async fn build_tools() -> Vec<DynTool> {
     let memory_dir = memory_dir();
     let mut tools: Vec<DynTool> = vec![
         Box::new(ListMemoryShardsTool::new(memory_dir.clone())),
-        Box::new(RecallMemoryShardTool::new(memory_dir)),
+        Box::new(RecallMemoryShardTool::new(memory_dir.clone())),
+        Box::new(GenerateMemoryShardTool::new(memory_dir)),
     ];
 
     let base_url = env::var("PRKS_BASE_URL")
