@@ -17,7 +17,7 @@ services:
     container_name: lb-alpine
     hostname: lb-alpine
     restart: always
-    image: mlikiowa/napcat-docker@sha256:2acfef8952da052ec66d8608e69db555c02e5ccc6e27e2609d641a2bee99be23
+    image: mlikiowa/napcat-docker:v4.15.19
     pull_policy: if_not_present
     volumes:
       - napcat-qq-data:/app/.config/QQ

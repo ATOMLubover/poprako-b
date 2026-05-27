@@ -1,6 +1,8 @@
 mod agent;
 mod handler;
+mod keepalive;
 mod message;
+mod scheduled_task;
 mod server;
 mod state;
 

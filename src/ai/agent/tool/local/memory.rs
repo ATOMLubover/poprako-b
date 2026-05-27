@@ -217,16 +217,16 @@ impl ITool for GenerateMemoryShardTool {
                 (
                     "description",
                     PropDef::String {
-                        desc: "Short description of the shard's content"
-                            .to_string(),
+                        desc: "Short description of the shard's content".to_string(),
                         r#enum: None,
                     },
                 ),
                 (
                     "tags",
                     PropDef::String {
-                        desc: "Comma-separated tags for categorization (e.g. 'frontend,translation')"
-                            .to_string(),
+                        desc:
+                            "Comma-separated tags for categorization (e.g. 'frontend,translation')"
+                                .to_string(),
                         r#enum: None,
                     },
                 ),
@@ -267,9 +267,7 @@ impl ITool for GenerateMemoryShardTool {
         let shard_name = v
             .get("shard_name")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| {
-                ToolError::args_schema("Missing required field 'shard_name'".into())
-            })?;
+            .ok_or_else(|| ToolError::args_schema("Missing required field 'shard_name'".into()))?;
 
         let display_name = v
             .get("display_name")
@@ -281,9 +279,7 @@ impl ITool for GenerateMemoryShardTool {
         let description = v
             .get("description")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| {
-                ToolError::args_schema("Missing required field 'description'".into())
-            })?;
+            .ok_or_else(|| ToolError::args_schema("Missing required field 'description'".into()))?;
 
         let tags = v
             .get("tags")
@@ -305,7 +301,11 @@ impl ITool for GenerateMemoryShardTool {
         }
 
         // Build YAML frontmatter.
-        let tags_list: Vec<&str> = tags.split(',').map(|t| t.trim()).filter(|t| !t.is_empty()).collect();
+        let tags_list: Vec<&str> = tags
+            .split(',')
+            .map(|t| t.trim())
+            .filter(|t| !t.is_empty())
+            .collect();
         let tags_yaml = tags_list
             .iter()
             .map(|t| format!("  - {}", t))
@@ -327,13 +327,14 @@ impl ITool for GenerateMemoryShardTool {
         })?;
 
         let shard_file = shard_dir.join("shard.md");
-        std::fs::write(&shard_file, &shard_content).map_err(|e| {
-            ToolError::exec_fail(format!("Failed to write shard file: {}", e))
-        })?;
+        std::fs::write(&shard_file, &shard_content)
+            .map_err(|e| ToolError::exec_fail(format!("Failed to write shard file: {}", e)))?;
 
         Ok(format!(
             "Successfully created memory shard '{}' at memory/shards/{}/shard.md ({} characters)",
-            shard_name, shard_name, content.len()
+            shard_name,
+            shard_name,
+            content.len()
         ))
     }
 }
@@ -437,7 +438,11 @@ mod tests {
         );
         let result = tool.exec(&args).await;
 
-        assert!(result.is_ok(), "1024 chars exactly should be accepted: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "1024 chars exactly should be accepted: {:?}",
+            result
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }

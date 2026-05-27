@@ -1,17 +1,20 @@
 use rand::Rng;
 use std::env;
 use std::sync::Arc;
+use std::time::Duration;
+
+use crate::bot::agent::BotAgent;
+use crate::bot::handler::handle_group_message;
+use crate::bot::keepalive::spawn_keepalive_task;
+use crate::bot::message::Message;
+use crate::bot::scheduled_task::spawn_spam_task;
+use crate::bot::state::BotState;
 
 use anyhow::Context as _;
 use onebot_v11::api::payload::{ApiPayload, SendGroupMsg};
 use onebot_v11::connect::ws_reverse::{ReverseWsConfig, ReverseWsConnect};
 use onebot_v11::event::message::Message as OneBotMessage;
 use onebot_v11::{Event, MessageSegment};
-
-use crate::bot::agent::BotAgent;
-use crate::bot::handler::handle_group_message;
-use crate::bot::message::Message;
-use crate::bot::state::BotState;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReverseWebSockServerConfig {
@@ -87,6 +90,17 @@ impl BotServer {
         let agent = BotAgent::new().await?;
         let mut state = BotState::new(agent);
 
+        let self_id: i64 = env::var("ACCOUNT")
+            .context("ACCOUNT not set in environment")?
+            .parse()
+            .context("ACCOUNT must be a valid i64")?;
+
+        let connection = self.connection;
+
+        spawn_keepalive_task(connection.clone(), self_id);
+        spawn_spam_task(connection.clone());
+
+        // Main event loop — handles group messages only.
         loop {
             let event = match events.recv().await {
                 Ok(event) => {
@@ -115,9 +129,11 @@ impl BotServer {
 
             // Random delay 2–5 seconds to avoid rate-limiting.
             let delay_ms = rand::thread_rng().gen_range(2000..5000);
-            tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+            tokio::time::sleep(Duration::from_millis(delay_ms)).await;
 
-            if let Err(error) = self.reply_to_group_message(message, reply).await {
+            if let Err(error) =
+                Self::reply_to_group_message(connection.clone(), message, reply).await
+            {
                 tracing::error!("failed to reply to group message: {error}");
             }
         }
@@ -133,7 +149,7 @@ impl BotServer {
     }
 
     async fn reply_to_group_message(
-        &self,
+        connection: Arc<ReverseWsConnect>,
         incoming: Message,
         reply: Message,
     ) -> anyhow::Result<()> {
@@ -159,7 +175,7 @@ impl BotServer {
             auto_escape: false,
         });
 
-        self.connection.clone().call_api(payload).await?;
+        connection.call_api(payload).await?;
 
         Ok(())
     }
