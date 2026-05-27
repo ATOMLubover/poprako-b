@@ -98,7 +98,7 @@ impl BotServer {
         let connection = self.connection;
 
         spawn_keepalive_task(connection.clone(), self_id);
-        spawn_spam_task(connection.clone());
+        spawn_spam_task(connection.clone(), self_id);
 
         // Main event loop — handles group messages only.
         loop {

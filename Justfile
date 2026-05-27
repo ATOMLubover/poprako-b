@@ -1,14 +1,31 @@
+# ---- Docker (legacy, docker-compose.bak.yml) ----
 run-napcat:
-	docker compose up -d lb-alpine
+	docker compose -f docker-compose.bak.yml up -d lb-alpine
 
 run-bot:
-	docker compose up -d --build bot
-
-run-stack: run-bot run-bot
-    @echo "Running the entire stack and the bot..."
+	docker compose -f docker-compose.bak.yml up -d --build bot
 
 run-bot-debug:
-	RUST_LOG=debug docker compose up -d --build bot
+	RUST_LOG=debug docker compose -f docker-compose.bak.yml up -d --build bot
 
 down-stack:
-	docker compose down
+	docker compose -f docker-compose.bak.yml down
+
+# ---- Host mode (docker-compose.host.yml) ----
+napcat-up:
+	docker compose -f docker-compose.host.yml up -d
+
+napcat-down:
+	docker compose -f docker-compose.host.yml down
+
+napcat-logs:
+	docker compose -f docker-compose.host.yml logs -f
+
+# Run poprako-b directly on the host (uses .env).
+# Requires: napcat-up has been run and NapCat reverse WS
+# configured to point at ws://127.0.0.1:8081/onebot/v11.
+bot-host:
+	cargo run --release
+
+bot-host-debug:
+	RUST_LOG=debug cargo run

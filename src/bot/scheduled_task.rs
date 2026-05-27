@@ -6,12 +6,12 @@ use std::time::Duration;
 use chrono::FixedOffset;
 use cron::Schedule;
 use onebot_v11::MessageSegment;
-use onebot_v11::api::payload::{ApiPayload, SendGroupMsg};
+use onebot_v11::api::payload::{ApiPayload, SendGroupMsg, SendPrivateMsg};
 use onebot_v11::connect::ws_reverse::ReverseWsConnect;
 use tokio::time::sleep;
 
-/// Fixed text sent at midnight to spam groups.
-const SPAM_TEXT: &str = "12 点了！.jpg";
+/// Path to the base64-encoded image sent at midnight and on boot (relative to workspace root).
+const SPAM_IMAGE_PATH: &str = "assets/12oclock.txt";
 
 /// Parse `SPAM_GROUPS` env var (comma-separated group IDs).
 fn parse_spam_groups() -> Vec<i64> {
@@ -31,7 +31,7 @@ fn parse_spam_groups() -> Vec<i64> {
 
 /// Spawn a task that sends `SPAM_TEXT` to `SPAM_GROUPS` at midnight (00:00 UTC+8)
 /// every day.
-pub fn spawn_spam_task(conn: Arc<ReverseWsConnect>) {
+pub fn spawn_spam_task(conn: Arc<ReverseWsConnect>, self_id: i64) {
     let schedule = match Schedule::from_str("0 0 0 * * * *") {
         Ok(s) => s,
         Err(e) => {
@@ -56,6 +56,35 @@ pub fn spawn_spam_task(conn: Arc<ReverseWsConnect>) {
     }
 
     tokio::spawn(async move {
+        // Read the spam image once at startup; used for both the boot
+        // notification and every midnight group message.
+        let image_base64 = match std::fs::read_to_string(SPAM_IMAGE_PATH) {
+            Ok(b64) => b64,
+            Err(e) => {
+                tracing::warn!(
+                    "scheduled task: failed to read spam image '{SPAM_IMAGE_PATH}': {e}"
+                );
+                return;
+            }
+        };
+        let image_file = format!("base64://{image_base64}");
+
+        // Send boot image to self so the owner knows the task is alive.
+        {
+            let payload = ApiPayload::SendPrivateMsg(SendPrivateMsg {
+                user_id: self_id,
+                message: vec![MessageSegment::easy_image(
+                    image_file.clone(),
+                    None::<String>,
+                )],
+                auto_escape: false,
+            });
+            match conn.clone().call_api(payload).await {
+                Ok(_) => tracing::info!("scheduled task: boot image sent to self"),
+                Err(e) => tracing::warn!("scheduled task: failed to send boot image: {e}"),
+            }
+        }
+
         loop {
             let next = match schedule.upcoming(timezone).next() {
                 Some(t) => t,
@@ -90,7 +119,10 @@ pub fn spawn_spam_task(conn: Arc<ReverseWsConnect>) {
             for (i, &group_id) in groups.iter().enumerate() {
                 let payload = ApiPayload::SendGroupMsg(SendGroupMsg {
                     group_id,
-                    message: vec![MessageSegment::text(SPAM_TEXT)],
+                    message: vec![MessageSegment::easy_image(
+                        image_file.clone(),
+                        None::<String>,
+                    )],
                     auto_escape: false,
                 });
 
