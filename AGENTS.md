@@ -32,9 +32,8 @@ An MCP-based memory service (separate repo, no embedder) is planned as an extern
 ## Skills
 
 - [poprako-b-overview](.agents/skills/poprako-b-overview/SKILL.md) — Architecture, key files, trigger mechanism, prompt system, memory shards.
-- [poprako-conventions](~/.agents/skills/poprako-conventions/SKILL.md) — Coding conventions (naming, modules, visibility, errors, async).
-- [poprako-resolver](~/.agents/skills/poprako-resolver/SKILL.md) — Resolver trait, Context, Message, Action, Tool types, OpenAiResolver.
-- [poprako-http](~/.agents/skills/poprako-http/SKILL.md) — HttpClient and HttpError in `src/http.rs`.
+- [poprako-resolver](.agents/skills/poprako-resolver/SKILL.md) — Resolver trait, Context, Message, Action, Tool types, OpenAiResolver.
+- [poprako-http](.agents/skills/poprako-http/SKILL.md) — HttpClient and HttpError in `src/http.rs`.
 - [check-use-braces](.agents/skills/check-use-braces/SKILL.md) — Rust import style linting.
 
 ## Environment

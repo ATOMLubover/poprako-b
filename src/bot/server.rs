@@ -6,7 +6,7 @@ use std::time::Duration;
 use crate::bot::agent::BotAgent;
 use crate::bot::handler::handle_group_message;
 use crate::bot::keepalive::spawn_keepalive_task;
-use crate::bot::message::Message;
+use crate::bot::message::{InputMessage, OutputMessage};
 use crate::bot::scheduled_task::spawn_spam_task;
 use crate::bot::state::BotState;
 
@@ -122,8 +122,14 @@ impl BotServer {
                 continue;
             }
 
-            let reply = match handle_group_message(&mut state, &message).await {
-                Some(reply) => reply,
+            // Push to history for repeat detection before processing.
+            // Only pure text messages are tracked — CQ codes should not be repeated.
+            if message.is_pure_text() {
+                state.push_history(message.clone());
+            }
+
+            let output = match handle_group_message(&mut state, &message).await {
+                Some(output) => output,
                 None => continue,
             };
 
@@ -132,17 +138,17 @@ impl BotServer {
             tokio::time::sleep(Duration::from_millis(delay_ms)).await;
 
             if let Err(error) =
-                Self::reply_to_group_message(connection.clone(), message, reply).await
+                Self::reply_to_group_message(connection.clone(), message, output).await
             {
                 tracing::error!("failed to reply to group message: {error}");
             }
         }
     }
 
-    fn extract_group_message(event: Event) -> Option<Message> {
+    fn extract_group_message(event: Event) -> Option<InputMessage> {
         match event {
             Event::Message(OneBotMessage::GroupMessage(group_message)) => {
-                Some(Message::from_group_message(group_message))
+                Some(InputMessage::from_group_message(group_message))
             }
             _ => None,
         }
@@ -150,24 +156,27 @@ impl BotServer {
 
     async fn reply_to_group_message(
         connection: Arc<ReverseWsConnect>,
-        incoming: Message,
-        reply: Message,
+        incoming: InputMessage,
+        output: OutputMessage,
     ) -> anyhow::Result<()> {
-        if reply.segments().is_empty() {
+        if output.segments().is_empty() {
             return Ok(());
         }
 
         let group_id = incoming
             .group_id()
             .context("group reply is missing target group id")?;
-        let message_id = incoming
-            .message_id()
-            .context("group reply is missing source message id")?;
-
-        let mut message = Vec::with_capacity(reply.segments().len() + 1);
-
-        message.push(MessageSegment::reply(message_id.to_string()));
-        message.extend(reply.into_segments());
+        let message = if output.reply {
+            let message_id = incoming
+                .message_id()
+                .context("group reply is missing source message id")?;
+            let mut parts = Vec::with_capacity(output.segments().len() + 1);
+            parts.push(MessageSegment::reply(message_id.to_string()));
+            parts.extend(output.into_segments());
+            parts
+        } else {
+            output.into_segments()
+        };
 
         let payload = ApiPayload::SendGroupMsg(SendGroupMsg {
             group_id,

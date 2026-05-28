@@ -1,9 +1,11 @@
 use onebot_v11::MessageSegment;
 
-use crate::bot::message::Message;
+use rand::Rng;
+
+use crate::bot::message::{InputMessage, OutputMessage};
 use crate::bot::state::BotState;
 
-pub async fn handle_group_message(state: &mut BotState, msg: &Message) -> Option<Message> {
+pub async fn handle_group_message(state: &mut BotState, msg: &InputMessage) -> Option<OutputMessage> {
     tracing::info!(
         group_id = msg.group_id(),
         user_id = msg.user_id(),
@@ -11,6 +13,43 @@ pub async fn handle_group_message(state: &mut BotState, msg: &Message) -> Option
         "received group message"
     );
 
+    if let Some(reply) = repeat(state, msg) {
+        return Some(reply);
+    }
+
+    bot_respond(state, msg).await
+}
+
+fn repeat(state: &BotState, msg: &InputMessage) -> Option<OutputMessage> {
+    let history = state.history();
+
+    if history.len() < 3 {
+        return None;
+    }
+
+    let raw_text = msg.raw_text();
+    if raw_text.is_empty() {
+        return None;
+    }
+
+    if !history.iter().all(|m| m.raw_text() == raw_text) {
+        return None;
+    }
+
+    // Only repeat pure text messages — avoid serialising CQ codes.
+    if !msg.is_pure_text() {
+        return None;
+    }
+
+    // 80% chance to repeat.
+    if !rand::thread_rng().gen_ratio(4, 5) {
+        return None;
+    }
+
+    Some(OutputMessage::new(false, InputMessage::text(raw_text)))
+}
+
+async fn bot_respond(state: &mut BotState, msg: &InputMessage) -> Option<OutputMessage> {
     let user_text = match extract_user_text(msg) {
         Some(text) => text,
         None => return None,
@@ -24,10 +63,11 @@ pub async fn handle_group_message(state: &mut BotState, msg: &Message) -> Option
         .try_respond(&nickname, &user_qid, &user_text)
         .await
         .or_else(|| Some("X﹏X 白杨子可能出现了点问题，无法回答这个问题哦".to_string()))
-        .map(Message::text)
+        .map(InputMessage::text)
+        .map(|m| OutputMessage::new(true, m))
 }
 
-fn extract_user_text(msg: &Message) -> Option<String> {
+fn extract_user_text(msg: &InputMessage) -> Option<String> {
     let self_id = msg.self_id()?;
 
     // Try @bot at beginning first
@@ -40,7 +80,7 @@ fn extract_user_text(msg: &Message) -> Option<String> {
 }
 
 /// Extract text after @bot at the beginning of the message (skipping Reply segments).
-fn try_extract_at(msg: &Message, self_id: i64) -> Option<String> {
+fn try_extract_at(msg: &InputMessage, self_id: i64) -> Option<String> {
     let mut iter = msg
         .segments()
         .iter()
@@ -65,7 +105,7 @@ fn try_extract_at(msg: &Message, self_id: i64) -> Option<String> {
 }
 
 /// Extract text after `/prk` prefix from raw_message.
-fn try_extract_prk(msg: &Message) -> Option<String> {
+fn try_extract_prk(msg: &InputMessage) -> Option<String> {
     let text = msg.raw_text().strip_prefix("/prk")?.trim().to_string();
     if text.is_empty() { None } else { Some(text) }
 }
