@@ -8,8 +8,8 @@ use crate::ai::resolver::context::Context;
 use crate::ai::resolver::message::{IMessage, MessageRef};
 use crate::ai::resolver::tool::IToolCall;
 
-pub mod openai;
 pub mod compact;
+pub mod openai;
 pub mod tool;
 
 pub type Compact<M> = fn(&mut Context<M>);

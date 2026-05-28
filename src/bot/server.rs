@@ -1,16 +1,20 @@
+use rand::Rng;
 use std::env;
 use std::sync::Arc;
+use std::time::Duration;
+
+use crate::bot::agent::BotAgent;
+use crate::bot::handler::handle_group_message;
+use crate::bot::keepalive::spawn_keepalive_task;
+use crate::bot::message::{InputMessage, OutputMessage};
+use crate::bot::scheduled_task::spawn_spam_task;
+use crate::bot::state::BotState;
 
 use anyhow::Context as _;
 use onebot_v11::api::payload::{ApiPayload, SendGroupMsg};
 use onebot_v11::connect::ws_reverse::{ReverseWsConfig, ReverseWsConnect};
 use onebot_v11::event::message::Message as OneBotMessage;
 use onebot_v11::{Event, MessageSegment};
-
-use crate::bot::agent::BotAgent;
-use crate::bot::handler::handle_group_message;
-use crate::bot::message::Message;
-use crate::bot::state::BotState;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReverseWebSockServerConfig {
@@ -83,9 +87,20 @@ impl BotServer {
     pub async fn serve(self) -> anyhow::Result<()> {
         let mut events = self.connection.subscribe().await;
 
-        let agent = BotAgent::new()?;
+        let agent = BotAgent::new().await?;
         let mut state = BotState::new(agent);
 
+        let self_id: i64 = env::var("ACCOUNT")
+            .context("ACCOUNT not set in environment")?
+            .parse()
+            .context("ACCOUNT must be a valid i64")?;
+
+        let connection = self.connection;
+
+        spawn_keepalive_task(connection.clone(), self_id);
+        spawn_spam_task(connection.clone(), self_id);
+
+        // Main event loop — handles group messages only.
         loop {
             let event = match events.recv().await {
                 Ok(event) => {
@@ -107,46 +122,61 @@ impl BotServer {
                 continue;
             }
 
-            let reply = match handle_group_message(&mut state, &message).await {
-                Some(reply) => reply,
+            // Push to history for repeat detection before processing.
+            // Only pure text messages are tracked — CQ codes should not be repeated.
+            if message.is_pure_text() {
+                state.push_history(message.clone());
+            }
+
+            let output = match handle_group_message(&mut state, &message).await {
+                Some(output) => output,
                 None => continue,
             };
 
-            if let Err(error) = self.reply_to_group_message(message, reply).await {
+            // Random delay 2–5 seconds to avoid rate-limiting.
+            let delay_ms = rand::thread_rng().gen_range(2000..5000);
+            tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+
+            if let Err(error) =
+                Self::reply_to_group_message(connection.clone(), message, output).await
+            {
                 tracing::error!("failed to reply to group message: {error}");
             }
         }
     }
 
-    fn extract_group_message(event: Event) -> Option<Message> {
+    fn extract_group_message(event: Event) -> Option<InputMessage> {
         match event {
             Event::Message(OneBotMessage::GroupMessage(group_message)) => {
-                Some(Message::from_group_message(group_message))
+                Some(InputMessage::from_group_message(group_message))
             }
             _ => None,
         }
     }
 
     async fn reply_to_group_message(
-        &self,
-        incoming: Message,
-        reply: Message,
+        connection: Arc<ReverseWsConnect>,
+        incoming: InputMessage,
+        output: OutputMessage,
     ) -> anyhow::Result<()> {
-        if reply.segments().is_empty() {
+        if output.segments().is_empty() {
             return Ok(());
         }
 
         let group_id = incoming
             .group_id()
             .context("group reply is missing target group id")?;
-        let message_id = incoming
-            .message_id()
-            .context("group reply is missing source message id")?;
-
-        let mut message = Vec::with_capacity(reply.segments().len() + 1);
-
-        message.push(MessageSegment::reply(message_id.to_string()));
-        message.extend(reply.into_segments());
+        let message = if output.reply {
+            let message_id = incoming
+                .message_id()
+                .context("group reply is missing source message id")?;
+            let mut parts = Vec::with_capacity(output.segments().len() + 1);
+            parts.push(MessageSegment::reply(message_id.to_string()));
+            parts.extend(output.into_segments());
+            parts
+        } else {
+            output.into_segments()
+        };
 
         let payload = ApiPayload::SendGroupMsg(SendGroupMsg {
             group_id,
@@ -154,7 +184,7 @@ impl BotServer {
             auto_escape: false,
         });
 
-        self.connection.clone().call_api(payload).await?;
+        connection.call_api(payload).await?;
 
         Ok(())
     }

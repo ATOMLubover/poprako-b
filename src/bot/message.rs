@@ -2,7 +2,7 @@ use onebot_v11::MessageSegment;
 use onebot_v11::event::message::GroupMessage;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Message {
+pub struct InputMessage {
     self_id: Option<i64>,
     message_id: Option<i64>,
     group_id: Option<i64>,
@@ -12,7 +12,7 @@ pub struct Message {
     segments: Vec<MessageSegment>,
 }
 
-impl Message {
+impl InputMessage {
     pub fn text(text: impl Into<String>) -> Self {
         Self::from_segments(vec![MessageSegment::text(text)])
     }
@@ -56,6 +56,13 @@ impl Message {
         self.segments
     }
 
+    /// Returns true if all segments are plain text.
+    pub fn is_pure_text(&self) -> bool {
+        self.segments
+            .iter()
+            .all(|seg| matches!(seg, MessageSegment::Text { .. }))
+    }
+
     pub fn from_group_message(group_message: GroupMessage) -> Self {
         Self {
             self_id: Some(group_message.self_id),
@@ -66,5 +73,24 @@ impl Message {
             raw_message: Some(group_message.raw_message),
             segments: group_message.message,
         }
+    }
+}
+
+pub struct OutputMessage {
+    pub reply: bool,
+    pub message: InputMessage,
+}
+
+impl OutputMessage {
+    pub fn new(reply: bool, message: InputMessage) -> Self {
+        Self { reply, message }
+    }
+
+    pub fn into_segments(self) -> Vec<MessageSegment> {
+        self.message.into_segments()
+    }
+
+    pub fn segments(&self) -> &[MessageSegment] {
+        self.message.segments()
     }
 }

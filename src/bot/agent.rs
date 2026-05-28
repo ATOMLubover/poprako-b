@@ -1,13 +1,16 @@
-pub mod prompt;
+mod prompt;
+mod tool;
+mod value_object;
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use openai_oxide::types::chat::{ChatCompletionMessageParam, UserContent};
 use prompt::BotPrompt;
+use tool::build_tools;
 
 use crate::ai::agent::compact::sliding_window_compact;
 use crate::ai::agent::openai::{OpenAiAgent, OpenAiAgentBuilder};
-use crate::ai::agent::tool::local::memory::{ListMemoryShardsTool, RecallMemoryShardTool};
 use crate::ai::resolver::context::ContextBuilder;
 use crate::ai::resolver::openai::OpenAiResolver;
 
@@ -19,16 +22,18 @@ pub fn memory_dir() -> PathBuf {
 
 pub struct BotAgent {
     agent: OpenAiAgent,
+    /// Map from user_qid to poprako-s user_id.
+    id_transform: HashMap<String, String>,
 }
 
 impl BotAgent {
     const MODEL_NAME: &'static str = "deepseek-v4-flash";
 
-    pub fn new() -> anyhow::Result<Self> {
+    pub async fn new() -> anyhow::Result<Self> {
         let resolver = OpenAiResolver::from_env();
 
         let system_prompt = BotPrompt::system_prompt()?;
-        let memory_dir = memory_dir();
+        let tools = build_tools().await;
 
         let cx = ContextBuilder::new(Self::MODEL_NAME)
             .messages(vec![ChatCompletionMessageParam::System {
@@ -38,23 +43,38 @@ impl BotAgent {
             .build();
 
         let agent = OpenAiAgentBuilder::new(cx, resolver)
-            .tools(vec![
-                Box::new(ListMemoryShardsTool::new(memory_dir.clone())),
-                Box::new(RecallMemoryShardTool::new(memory_dir)),
-            ])
+            .tools(tools)
             .compact(sliding_window_compact)
             .build();
 
-        Ok(Self { agent })
+        Ok(Self {
+            agent,
+            id_transform: HashMap::new(),
+        })
     }
 
-    pub async fn try_respond(&mut self, user_text: &str, user_name: Option<String>) -> Option<String> {
+    pub async fn try_respond(
+        &mut self,
+        user_nickname: &str,
+        user_qid: &str,
+        user_text: &str,
+    ) -> Option<String> {
+        // Transform user_qid to user_id for better readability in the prompt,
+        // as PopRaKo-B uses user_id in PopRaKo-S tools.
+        let name = self
+            .id_transform
+            .get(user_qid)
+            .cloned()
+            .map(|s| format!("{} (poprako-s user_id: {})", user_nickname, s))
+            .unwrap_or_else(|| format!("{} (no poprako-s user_id", user_nickname));
+
         self.agent.push_message(ChatCompletionMessageParam::User {
             content: UserContent::Text(user_text.to_string()),
-            name: user_name,
+            name: Some(name),
         });
 
         // Compact before solving to keep context within sliding window.
+        // TODO: compact AFTER solving.
         self.agent.compact();
 
         self.agent.solve().await
