@@ -9,6 +9,7 @@ use crate::ai::agent::tool::DynTool;
 use crate::ai::agent::tool::local::memory::{
     GenerateMemoryShardTool, ListMemoryShardsTool, RecallMemoryShardTool,
 };
+use crate::ai::agent::tool::local::subagent::RunSubagentsTool;
 use crate::bot::agent::memory_dir;
 use crate::bot::agent::tool::poprako_s::{
     GetComicPinnedChapterTool, ListChapterAssignmentsTool, ListComicChaptersTool,
@@ -22,7 +23,12 @@ pub async fn build_tools() -> Vec<DynTool> {
     let mut tools: Vec<DynTool> = vec![
         Box::new(ListMemoryShardsTool::new(memory_dir.clone())),
         Box::new(RecallMemoryShardTool::new(memory_dir.clone())),
-        Box::new(GenerateMemoryShardTool::new(memory_dir)),
+        Box::new(GenerateMemoryShardTool::new(memory_dir.clone())),
+        Box::new(RunSubagentsTool::new(
+            "deepseek-v4-flash".into(),
+            5,
+            memory_dir,
+        )),
     ];
 
     let base_url = env::var("PRKS_BASE_URL")
