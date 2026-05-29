@@ -6,7 +6,7 @@ use openai_oxide::types::chat::{ChatCompletionMessageParam, UserContent};
 use crate::ai::agent::openai::OpenAiAgentBuilder;
 use crate::ai::agent::tool::DynTool;
 use crate::ai::agent::tool::ITool;
-use crate::ai::agent::tool::local::fs::ReadFileTool;
+use crate::ai::agent::tool::local::fs::{ListFilesTool, ReadFileTool};
 use crate::ai::agent::tool::result::{ToolError, ToolResult};
 use crate::ai::resolver::context::ContextBuilder;
 use crate::ai::resolver::openai::OpenAiResolver;
@@ -28,7 +28,10 @@ impl RunSubagentsTool {
     }
 
     fn build_sub_agent_tools(&self) -> Vec<DynTool> {
-        vec![Box::new(ReadFileTool::new(self.tools_base_dir.clone()))]
+        vec![
+            Box::new(ReadFileTool::new(self.tools_base_dir.clone())),
+            Box::new(ListFilesTool::new(self.tools_base_dir.clone())),
+        ]
     }
 }
 
@@ -243,7 +246,7 @@ impl ITool for RunSubagentsTool {
             "run_subagents",
             "Delegate multiple independent tasks to sub-agents that run in parallel. \
              Each sub-agent resolves independently and results are collected. \
-             Sub-agents have access to the read_file tool.",
+             Sub-agents have access to the list_files and read_file tools.",
             params,
         )
         .with_strict(true)
