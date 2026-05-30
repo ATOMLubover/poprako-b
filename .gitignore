@@ -4,3 +4,5 @@
 !.env.sample
 
 /tests/output/
+
+.DS_Store

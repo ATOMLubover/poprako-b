@@ -21,7 +21,7 @@ pub async fn handle_group_message(state: &mut BotState, msg: &InputMessage) -> V
     bot_respond(state, msg).await
 }
 
-fn repeat(state: &BotState, msg: &InputMessage) -> Vec<OutputMessage> {
+fn repeat(state: &mut BotState, msg: &InputMessage) -> Vec<OutputMessage> {
     let history = state.history();
 
     if history.len() < 3 {
@@ -42,10 +42,18 @@ fn repeat(state: &BotState, msg: &InputMessage) -> Vec<OutputMessage> {
         return Vec::new();
     }
 
+    // Don't repeat the same text the bot already repeated in this chain.
+    if state.last_repeat() == Some(raw_text) {
+        return Vec::new();
+    }
+
     // 80% chance to repeat.
     if !rand::thread_rng().gen_ratio(4, 5) {
         return Vec::new();
     }
+
+    state.set_last_repeat(raw_text.to_string());
+    tracing::info!("repeating '{}'", raw_text);
 
     vec![OutputMessage::new(false, InputMessage::text(raw_text))]
 }

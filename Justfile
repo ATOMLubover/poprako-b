@@ -1,15 +1,15 @@
-# ---- Docker (legacy, docker-compose.bak.yml) ----
-run-napcat:
-	docker compose -f docker-compose.bak.yml up -d lb-alpine
-
-run-bot:
-	docker compose -f docker-compose.bak.yml up -d --build bot
-
-run-bot-debug:
-	RUST_LOG=debug docker compose -f docker-compose.bak.yml up -d --build bot
-
-down-stack:
-	docker compose -f docker-compose.bak.yml down
+# # ---- Docker (legacy, docker-compose.bak.yml) ----
+# run-napcat:
+# 	docker compose -f docker-compose.bak.yml up -d lb-alpine
+#
+# run-bot:
+# 	docker compose -f docker-compose.bak.yml up -d --build bot
+#
+# run-bot-debug:
+# 	RUST_LOG=debug docker compose -f docker-compose.bak.yml up -d --build bot
+#
+# down-stack:
+# 	docker compose -f docker-compose.bak.yml down
 
 # ---- Host mode (docker-compose.host.yml) ----
 run-napcat-host:

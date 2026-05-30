@@ -1,5 +1,5 @@
 ---
-name: role-system
+name: poprako-role-system
 description: 白杨汉化组成员角色定义，包括图源、翻译、校对、嵌字、美工、监修、发布、管理员
 tags:
   - 角色

@@ -1,5 +1,5 @@
 ---
-name: group-overview
+name: baiyang-overview
 description: 白杨汉化组的整体介绍，包括规模、业务范围和使用的工具
 tags:
   - 汉化组

@@ -16,6 +16,7 @@ serde_yaml = "0.9.34"
 tokio = { version = "1.52.3", features = ["macros", "rt-multi-thread"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "fmt", "time"] }
+tracing-appender = "0.2"
 chrono = { version = "0.4", features = ["clock"] }
 cron = "0.15"
 rand = "0.8.5"

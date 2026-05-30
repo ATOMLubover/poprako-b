@@ -10,6 +10,7 @@ use crate::ai::agent::tool::local::memory::{
     GenerateMemoryShardTool, ListMemoryShardsTool, RecallMemoryShardTool,
 };
 use crate::ai::agent::tool::local::subagent::RunSubagentsTool;
+use crate::ai::agent::tool::local::web::WebSearchTool;
 use crate::bot::agent::memory_dir;
 use crate::bot::agent::tool::poprako_s::{
     GetComicPinnedChapterTool, ListChapterAssignmentsTool, ListComicChaptersTool,
@@ -27,24 +28,24 @@ pub async fn build_tools() -> Vec<DynTool> {
         Box::new(RunSubagentsTool::new(
             "deepseek-v4-flash".into(),
             5,
-            memory_dir,
+            memory_dir.clone(),
         )),
     ];
 
-    let base_url = env::var("PRKS_BASE_URL")
-        .or_else(|_| env::var("POPRKO_S_BASE_URL"))
-        .or_else(|_| env::var("POPRAKO_S_BASE_URL"));
-    let qid = env::var("PRKS_QID")
-        .or_else(|_| env::var("POPRKO_S_QID"))
-        .or_else(|_| env::var("POPRAKO_S_QID"));
-    let password = env::var("PRKS_PASSWORD")
-        .or_else(|_| env::var("POPRKO_S_PASSWORD"))
-        .or_else(|_| env::var("POPRAKO_S_PASSWORD"));
+    if let Some(ws) = WebSearchTool::from_env() {
+        tools.push(Box::new(ws));
+    } else {
+        tracing::info!("TAVILY_API_KEY not set, skip web_search tool");
+    }
+
+    let base_url = env::var("POPRAKO_S_BASE_URL");
+    let qid = env::var("POPRAKO_S_QID");
+    let password = env::var("POPRAKO_S_PASSWORD");
 
     let (base_url, qid, password) = match (base_url, qid, password) {
         (Ok(base_url), Ok(qid), Ok(password)) => (base_url, qid, password),
         _ => {
-            tracing::info!("prks env triple missing, skip prks tools");
+            tracing::info!("POPRAKO_S_* env not set, skip poprako-s tools");
             return tools;
         }
     };
@@ -52,7 +53,7 @@ pub async fn build_tools() -> Vec<DynTool> {
     let url = match Url::parse(&base_url).map(normalize_base_url) {
         Ok(url) => url,
         Err(error) => {
-            tracing::warn!(error = %error, "invalid PRKS_BASE_URL, skip prks tools");
+            tracing::warn!(error = %error, "invalid POPRAKO_S_BASE_URL, skip poprako-s tools");
             return tools;
         }
     };
@@ -61,7 +62,7 @@ pub async fn build_tools() -> Vec<DynTool> {
     let token = match PrksClient::login(&http_client, &qid, &password).await {
         Ok(token) => token,
         Err(error) => {
-            tracing::warn!(error = %error, "prks login failed, skip prks tools");
+            tracing::warn!(error = %error, "poprako-s login failed, skip poprako-s tools");
             return tools;
         }
     };
