@@ -6,13 +6,22 @@ pub struct BotState {
     agent: BotAgent,
     // History used for repeat（复读） feature, with a capacity of 3 to limit memory usage.
     history: VecDeque<InputMessage>,
+    // The last text the bot repeated, to avoid repeating the same sentence over and over.
+    last_repeat: Option<String>,
+    developer_qid: Option<i64>,
 }
 
 impl BotState {
     pub fn new(agent: BotAgent) -> Self {
+        let developer_qid = std::env::var("DEVELOPER")
+            .ok()
+            .and_then(|v| v.parse::<i64>().ok());
+
         Self {
             agent,
             history: VecDeque::with_capacity(3),
+            last_repeat: None,
+            developer_qid,
         }
     }
 
@@ -30,5 +39,17 @@ impl BotState {
 
     pub fn history(&self) -> &VecDeque<InputMessage> {
         &self.history
+    }
+
+    pub fn last_repeat(&self) -> Option<&str> {
+        self.last_repeat.as_deref()
+    }
+
+    pub fn set_last_repeat(&mut self, text: String) {
+        self.last_repeat = Some(text);
+    }
+
+    pub fn is_developer(&self, user_qid: i64) -> bool {
+        self.developer_qid == Some(user_qid)
     }
 }

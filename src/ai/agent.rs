@@ -62,6 +62,18 @@ where
         self.context.set_messages(messages);
     }
 
+    /// Replace the first message (system prompt) while keeping the rest intact.
+    /// If the message list is empty, the new message is pushed as the sole entry.
+    pub fn replace_system_message(&mut self, message: M) {
+        let mut messages = self.context.take_messages();
+        if messages.is_empty() {
+            messages.push(message);
+        } else {
+            messages[0] = message;
+        }
+        self.context.set_messages(messages);
+    }
+
     pub fn set_compact(&mut self, compact: Compact<M>) {
         self.compact = Some(compact);
     }

@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::bot::agent::BotAgent;
+use crate::bot::agent::prompt::spawn_refresh_system_promt_task;
 use crate::bot::handler::handle_group_message;
 use crate::bot::keepalive::spawn_keepalive_task;
 use crate::bot::message::{InputMessage, OutputMessage};
@@ -100,47 +101,87 @@ impl BotServer {
         spawn_keepalive_task(connection.clone(), self_id);
         spawn_spam_task(connection.clone(), self_id);
 
-        // Main event loop — handles group messages only.
+        let mut prompt_recv = spawn_refresh_system_promt_task()?;
+
         loop {
-            let event = match events.recv().await {
-                Ok(event) => {
-                    tracing::debug!("received onebot event: {event:?}");
-                    event
+            tokio::select! {
+                event = events.recv() => {
+                    Self::handle_event(&mut state, &connection, event).await;
                 }
-                Err(error) => {
-                    tracing::warn!("failed to receive onebot event: {error}");
-                    continue;
+                new_prompt = prompt_recv.recv() => {
+                    if !Self::handle_prompt_reload(&mut state, new_prompt) {
+                        break Ok(());
+                    }
                 }
-            };
-
-            let message = match Self::extract_group_message(event) {
-                Some(msg) => msg,
-                None => continue,
-            };
-
-            if message.user_id() == message.self_id() {
-                continue;
             }
+        }
+    }
 
-            // Push to history for repeat detection before processing.
-            // Only pure text messages are tracked — CQ codes should not be repeated.
-            if message.is_pure_text() {
-                state.push_history(message.clone());
+    async fn handle_event(
+        state: &mut BotState,
+        connection: &Arc<ReverseWsConnect>,
+        event: Result<Event, tokio::sync::broadcast::error::RecvError>,
+    ) {
+        let event = match event {
+            Ok(event) => {
+                tracing::debug!("received onebot event: {event:?}");
+                event
             }
+            Err(error) => {
+                tracing::warn!("failed to receive onebot event: {error}");
+                return;
+            }
+        };
 
-            let output = match handle_group_message(&mut state, &message).await {
-                Some(output) => output,
-                None => continue,
-            };
+        let message = match Self::extract_group_message(event) {
+            Some(msg) => msg,
+            None => return,
+        };
 
-            // Random delay 2–5 seconds to avoid rate-limiting.
-            let delay_ms = rand::thread_rng().gen_range(2000..5000);
-            tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+        if message.user_id() == message.self_id() {
+            return;
+        }
 
+        if message.is_pure_text() {
+            state.push_history(message.clone());
+        }
+
+        let outputs = handle_group_message(state, &message).await;
+        if outputs.is_empty() {
+            return;
+        }
+
+        // Random delay 2–5 seconds before first message to avoid rate-limiting.
+        let first_delay_ms = rand::thread_rng().gen_range(2000..5000);
+        tokio::time::sleep(Duration::from_millis(first_delay_ms)).await;
+
+        let total = outputs.len();
+        for (i, output) in outputs.into_iter().enumerate() {
             if let Err(error) =
-                Self::reply_to_group_message(connection.clone(), message, output).await
+                Self::reply_to_group_message(connection.clone(), message.clone(), output).await
             {
                 tracing::error!("failed to reply to group message: {error}");
+                break;
+            }
+
+            // 2–3 seconds between messages within a batch.
+            if i + 1 < total {
+                let delay_ms = rand::thread_rng().gen_range(2000..3000);
+                tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+            }
+        }
+    }
+
+    /// Returns `true` if the loop should continue, `false` if the channel closed.
+    fn handle_prompt_reload(state: &mut BotState, new_prompt: Option<String>) -> bool {
+        match new_prompt {
+            Some(content) => {
+                state.agent_mut().reload_system_prompt(content);
+                true
+            }
+            None => {
+                tracing::warn!("prompt refresh channel closed, stopping reloads");
+                false
             }
         }
     }

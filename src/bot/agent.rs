@@ -1,4 +1,4 @@
-mod prompt;
+pub mod prompt;
 mod tool;
 mod value_object;
 
@@ -6,13 +6,13 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use openai_oxide::types::chat::{ChatCompletionMessageParam, UserContent};
-use prompt::BotPrompt;
 use tool::build_tools;
 
 use crate::ai::agent::compact::sliding_window_compact;
 use crate::ai::agent::openai::{OpenAiAgent, OpenAiAgentBuilder};
 use crate::ai::resolver::context::ContextBuilder;
 use crate::ai::resolver::openai::OpenAiResolver;
+use crate::bot::agent::prompt::system_prompt;
 
 pub fn memory_dir() -> PathBuf {
     std::env::var("MEMORY_DIR")
@@ -32,17 +32,17 @@ impl BotAgent {
     pub async fn new() -> anyhow::Result<Self> {
         let resolver = OpenAiResolver::from_env();
 
-        let system_prompt = BotPrompt::system_prompt()?;
+        let system_prompt = system_prompt()?;
         let tools = build_tools().await;
 
-        let cx = ContextBuilder::new(Self::MODEL_NAME)
+        let context = ContextBuilder::new(Self::MODEL_NAME)
             .messages(vec![ChatCompletionMessageParam::System {
                 content: system_prompt,
                 name: None,
             }])
             .build();
 
-        let agent = OpenAiAgentBuilder::new(cx, resolver)
+        let agent = OpenAiAgentBuilder::new(context, resolver)
             .tools(tools)
             .compact(sliding_window_compact)
             .build();
@@ -53,24 +53,38 @@ impl BotAgent {
         })
     }
 
+    /// Reload the system prompt at messages[0] without affecting the
+    /// conversation history (messages[1..]).
+    pub fn reload_system_prompt(&mut self, content: String) {
+        self.agent
+            .replace_system_message(ChatCompletionMessageParam::System {
+                content,
+                name: None,
+            });
+    }
+
     pub async fn try_respond(
         &mut self,
         user_nickname: &str,
         user_qid: &str,
         user_text: &str,
     ) -> Option<String> {
-        // Transform user_qid to user_id for better readability in the prompt,
-        // as PopRaKo-B uses user_id in PopRaKo-S tools.
-        let name = self
+        // Inline the nickname and user_id into the message text so the LLM can
+        // always see it. The `name` field on ChatCompletionMessageParam is ignored
+        // by DeepSeek, so embedding this info in the visible `content` is the only
+        // reliable way to carry it through the resolver pipeline (including
+        // compaction, which preserves `content` but drops `name`).
+        let user_id_display = self
             .id_transform
             .get(user_qid)
-            .cloned()
-            .map(|s| format!("{} (poprako-s user_id: {})", user_nickname, s))
-            .unwrap_or_else(|| format!("{} (no poprako-s user_id", user_nickname));
+            .map(|s| format!("(poprako-s user_id: {s})"))
+            .unwrap_or_else(|| "(poprako-s user_id: -)".to_string());
+
+        let full_text = format!("[{} {}] {}", user_nickname, user_id_display, user_text);
 
         self.agent.push_message(ChatCompletionMessageParam::User {
-            content: UserContent::Text(user_text.to_string()),
-            name: Some(name),
+            content: UserContent::Text(full_text),
+            name: None,
         });
 
         // Compact before solving to keep context within sliding window.

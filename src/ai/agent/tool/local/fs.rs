@@ -98,6 +98,89 @@ impl ITool for CreateFileTool {
     }
 }
 
+pub struct ListFilesTool {
+    base_dir: PathBuf,
+}
+
+impl ListFilesTool {
+    const TOOL_NAME: &'static str = "list_files";
+
+    pub fn new(base_dir: PathBuf) -> Self {
+        Self { base_dir }
+    }
+}
+
+#[async_trait::async_trait]
+impl ITool for ListFilesTool {
+    fn def(&self) -> ToolDef {
+        let params = ParamDef::new("object")
+            .with_properties(vec![(
+                "path",
+                PropDef::String {
+                    desc: "Relative path to list. Use empty string or '.' for the base directory. \
+                           This path is always relative to the sandboxed base directory — you \
+                           cannot escape it or access files outside."
+                        .to_string(),
+                    r#enum: None,
+                },
+            )])
+            .with_required(vec!["path".to_string()]);
+
+        ToolDef::new(
+            Self::TOOL_NAME,
+            "List files and directories at the given relative path. \
+             The path is always scoped to the base directory — path traversal (..) is blocked. \
+             Directories are marked with a trailing '/'.",
+            params,
+        )
+        .with_strict(true)
+    }
+
+    async fn exec(&mut self, args: &str) -> ToolResult {
+        let v: serde_json::Value = serde_json::from_str(args)
+            .map_err(|e| ToolError::args_schema(format!("Invalid JSON args: {e}")))?;
+
+        let path = v
+            .get("path")
+            .and_then(|v| v.as_str())
+            .unwrap_or(".");
+
+        // An empty string defaults to base dir.
+        let path = if path.is_empty() { "." } else { path };
+
+        let _ = check_path_traversal(path)?;
+        let full_path = self.base_dir.join(path);
+
+        let entries = std::fs::read_dir(&full_path).map_err(|e| {
+            ToolError::exec_fail(format!("Failed to read directory '{}': {e}", path))
+        })?;
+
+        let mut listing = Vec::new();
+        for entry in entries {
+            let entry = entry.map_err(|e| {
+                ToolError::exec_fail(format!("Failed to read entry in '{}': {e}", path))
+            })?;
+
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+
+            let is_dir = entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false);
+            if is_dir {
+                listing.push(format!("  {name}/ (directory)"));
+            } else {
+                listing.push(format!("  {name}"));
+            }
+        }
+
+        if listing.is_empty() {
+            Ok(format!("(empty directory)"))
+        } else {
+            listing.sort();
+            Ok(listing.join("\n"))
+        }
+    }
+}
+
 pub struct ReadFileTool {
     base_dir: PathBuf,
 }
@@ -231,6 +314,121 @@ mod tests {
         let result = tool.exec(r#"{"content":"test"}"#).await;
         assert!(result.is_err(), "missing path should be rejected");
     }
+
+    // ---- ListFilesTool tests ----
+
+    #[test]
+    fn list_files_tool_definition_is_correct() {
+        let tool = ListFilesTool::new(PathBuf::from("/tmp"));
+        let def = tool.def();
+
+        assert_eq!(def.name, "list_files");
+        assert_eq!(def.strict, Some(true));
+        assert!(def.parameters.props.contains_key("path"));
+        assert_eq!(def.parameters.required, Some(vec!["path".to_string()]));
+    }
+
+    #[tokio::test]
+    async fn list_files_root() {
+        let dir = std::env::temp_dir().join("poprako-test-list-files");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create dir");
+
+        // Create some files and a subdirectory.
+        std::fs::write(dir.join("a.txt"), "aaa").expect("write a.txt");
+        std::fs::write(dir.join("b.txt"), "bbb").expect("write b.txt");
+        std::fs::create_dir(dir.join("sub")).expect("create sub dir");
+
+        let mut tool = ListFilesTool::new(dir.clone());
+
+        let result = tool.exec(r#"{"path":"."}"#).await;
+        assert!(result.is_ok(), "list should succeed: {:?}", result);
+        let output = result.unwrap();
+
+        assert!(output.contains("a.txt"), "should list a.txt: {output}");
+        assert!(output.contains("b.txt"), "should list b.txt: {output}");
+        assert!(
+            output.contains("sub/ (directory)"),
+            "should list sub directory: {output}"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn list_files_subdirectory() {
+        let dir = std::env::temp_dir().join("poprako-test-list-sub");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("sub")).expect("create sub");
+        std::fs::write(dir.join("sub/nested.txt"), "nested").expect("write nested");
+
+        let mut tool = ListFilesTool::new(dir.clone());
+
+        let result = tool.exec(r#"{"path":"sub"}"#).await;
+        assert!(
+            result.is_ok(),
+            "list sub should succeed: {:?}",
+            result
+        );
+        let output = result.unwrap();
+        assert!(
+            output.contains("nested.txt"),
+            "should list nested.txt: {output}"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn list_files_empty_directory() {
+        let dir = std::env::temp_dir().join("poprako-test-list-empty");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create dir");
+
+        let mut tool = ListFilesTool::new(dir.clone());
+
+        let result = tool.exec(r#"{"path":"."}"#).await;
+        assert!(result.is_ok(), "list empty should succeed");
+        assert_eq!(result.unwrap(), "(empty directory)");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn list_files_empty_path_defaults_to_root() {
+        let dir = std::env::temp_dir().join("poprako-test-list-empty-path");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create dir");
+        std::fs::write(dir.join("x.txt"), "x").expect("write");
+
+        let mut tool = ListFilesTool::new(dir.clone());
+        let result = tool.exec(r#"{"path":""}"#).await;
+
+        assert!(result.is_ok(), "empty path should default to root");
+        assert!(result.unwrap().contains("x.txt"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn list_files_rejects_traversal() {
+        let dir = std::env::temp_dir().join("poprako-test-list-traversal");
+        let mut tool = ListFilesTool::new(dir);
+
+        let result = tool.exec(r#"{"path":"../../etc"}"#).await;
+        assert!(result.is_err(), "path traversal should be rejected");
+    }
+
+    #[tokio::test]
+    async fn list_files_nonexistent_directory() {
+        let dir = std::env::temp_dir().join("poprako-test-list-nonexistent");
+        let mut tool = ListFilesTool::new(dir);
+
+        let result = tool.exec(r#"{"path":"nope"}"#).await;
+        assert!(result.is_err(), "nonexistent dir should fail");
+    }
+
+    // ---- ReadFileTool tests ----
 
     #[test]
     fn read_file_tool_definition_is_correct() {
