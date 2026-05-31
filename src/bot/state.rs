@@ -8,14 +8,20 @@ pub struct BotState {
     history: VecDeque<InputMessage>,
     // The last text the bot repeated, to avoid repeating the same sentence over and over.
     last_repeat: Option<String>,
+    developer_qid: Option<i64>,
 }
 
 impl BotState {
     pub fn new(agent: BotAgent) -> Self {
+        let developer_qid = std::env::var("DEVELOPER")
+            .ok()
+            .and_then(|v| v.parse::<i64>().ok());
+
         Self {
             agent,
             history: VecDeque::with_capacity(3),
             last_repeat: None,
+            developer_qid,
         }
     }
 
@@ -41,5 +47,9 @@ impl BotState {
 
     pub fn set_last_repeat(&mut self, text: String) {
         self.last_repeat = Some(text);
+    }
+
+    pub fn is_developer(&self, user_qid: i64) -> bool {
+        self.developer_qid == Some(user_qid)
     }
 }

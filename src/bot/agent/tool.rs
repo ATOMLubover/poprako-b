@@ -7,7 +7,8 @@ use url::Url;
 
 use crate::ai::agent::tool::DynTool;
 use crate::ai::agent::tool::local::memory::{
-    GenerateMemoryShardTool, ListMemoryShardsTool, RecallMemoryShardTool,
+    GenerateMemoryShardTool, ListMemoryShardsTool, ModifyMemoryShardTool,
+    RecallMemoryShardTool,
 };
 use crate::ai::agent::tool::local::subagent::RunSubagentsTool;
 use crate::ai::agent::tool::local::web::WebSearchTool;
@@ -25,6 +26,7 @@ pub async fn build_tools() -> Vec<DynTool> {
         Box::new(ListMemoryShardsTool::new(memory_dir.clone())),
         Box::new(RecallMemoryShardTool::new(memory_dir.clone())),
         Box::new(GenerateMemoryShardTool::new(memory_dir.clone())),
+        Box::new(ModifyMemoryShardTool::new(memory_dir.clone())),
         Box::new(RunSubagentsTool::new(
             "deepseek-v4-flash".into(),
             5,

@@ -67,6 +67,14 @@ async fn bot_respond(state: &mut BotState, msg: &InputMessage) -> Vec<OutputMess
     let nickname = msg.nickname().unwrap_or_default().to_string();
     let user_qid = msg.user_id().map(|id| id.to_string()).unwrap_or_default();
 
+    let is_dev = msg.user_id().is_some_and(|qid| state.is_developer(qid));
+
+    let user_text = if is_dev {
+        format!("[开发者] {user_text}")
+    } else {
+        user_text
+    };
+
     let text = state
         .agent_mut()
         .try_respond(&nickname, &user_qid, &user_text)
