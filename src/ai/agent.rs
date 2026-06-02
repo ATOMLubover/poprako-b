@@ -1,7 +1,11 @@
 use std::collections::HashMap;
+use std::collections::HashSet;
 
 use crate::ai::agent::tool::DynTool;
-use crate::ai::agent::tool::result::ToolOutput;
+use crate::ai::agent::tool::remote::RemoteProxy;
+use crate::ai::agent::tool::result::CallOutput;
+use crate::ai::agent::tool::result::CallResult;
+use crate::ai::agent::tool::result::ExecutionError;
 use crate::ai::resolver::IResolver;
 use crate::ai::resolver::action::Reason;
 use crate::ai::resolver::context::Context;
@@ -20,7 +24,8 @@ where
     R: IResolver<Message = M> + Send,
 {
     context: Context<M>,
-    tools: HashMap<String, DynTool>,
+    local_tools: HashMap<String, DynTool>,
+    remote_proxy: Option<RemoteProxy>,
 
     resolver: R,
 
@@ -35,23 +40,23 @@ where
     pub fn from_context(cx: Context<M>, resolver: R) -> Self {
         Self {
             context: cx,
-            tools: HashMap::new(),
+            local_tools: HashMap::new(),
+            remote_proxy: None,
             resolver,
             compact: None,
         }
     }
 
     pub fn set_tools(&mut self, tools: Vec<DynTool>) {
-        let mut tool_defs = vec![];
+        self.local_tools.clear();
 
         for tool in tools.into_iter() {
-            let def = tool.def();
+            let def = tool.defination();
 
-            tool_defs.push(def.clone());
-            self.tools.insert(def.name.clone(), tool);
+            self.local_tools.insert(def.name.clone(), tool);
         }
 
-        self.context.set_tool_defs(tool_defs);
+        self.refresh_tools();
     }
 
     pub fn push_message(&mut self, message: M) {
@@ -80,15 +85,13 @@ where
 
     /// Replace all registered tools, returning the old ones.
     pub fn replace_tools(&mut self, tools: Vec<DynTool>) -> Vec<DynTool> {
-        let old: Vec<DynTool> = self.tools.drain().map(|(_, v)| v).collect();
+        let old: Vec<DynTool> = self.local_tools.drain().map(|(_, v)| v).collect();
 
-        let mut defs = Vec::with_capacity(tools.len());
         for tool in tools {
-            let def = tool.def();
-            defs.push(def.clone());
-            self.tools.insert(def.name.clone(), tool);
+            let def = tool.defination();
+            self.local_tools.insert(def.name.clone(), tool);
         }
-        self.context.set_tool_defs(defs);
+        self.refresh_tools();
 
         old
     }
@@ -123,21 +126,20 @@ where
                 Some(calls) => {
                     let mut messages = Vec::with_capacity(calls.len());
                     for call in calls {
-                        let message = self
-                            .dispatch_tool_call(call)
-                            .await
-                            .map(|output| {
-                                M::from(MessageRef::Tool {
-                                    tool_call_id: &output.id,
-                                    content: &output.content,
-                                })
-                            })
-                            .unwrap_or_else(|e| {
+                        let result = self.handle_call(call).await;
+                        let message = match &result {
+                            Ok(output) => M::from(MessageRef::Tool {
+                                tool_call_id: &output.call_id,
+                                content: &output.content,
+                            }),
+                            Err(e) => {
+                                let err_msg = format!("{:?}", e);
                                 M::from(MessageRef::Tool {
                                     tool_call_id: call.id(),
-                                    content: &e,
+                                    content: &err_msg,
                                 })
-                            });
+                            }
+                        };
 
                         messages.push(message);
                     }
@@ -166,16 +168,46 @@ where
         }
     }
 
-    async fn dispatch_tool_call(&mut self, call: &M::ToolCall) -> Result<ToolOutput, String> {
-        let tool = match self.tools.get_mut(call.name()) {
-            Some(tool) => tool,
-            None => return Err(format!("tool not found: {}", call.name())),
-        };
+    async fn handle_call(&mut self, call: &M::ToolCall) -> CallResult {
+        if let Some(tool) = self.local_tools.get_mut(call.name()) {
+            let content = tool.execute(call.args()).await?;
+            return Ok(CallOutput::new(call.id().to_string(), content));
+        }
 
-        tool.exec(call.args())
-            .await
-            .map(|content| ToolOutput::new(call.id(), content))
-            .map_err(|e| format!("{:?}", e))
+        if let Some(remote_proxy) = &self.remote_proxy
+            && remote_proxy.has_tool(call.name())
+        {
+            return remote_proxy.handle_call(call).await;
+        }
+
+        Err(ExecutionError::exec_fail(format!(
+            "tool not found: {}",
+            call.name()
+        )))
+    }
+
+    fn refresh_tools(&mut self) {
+        let mut defs = Vec::with_capacity(self.local_tools.len());
+        let mut local_names = HashSet::with_capacity(self.local_tools.len());
+
+        for tool in self.local_tools.values() {
+            let def = tool.defination();
+            local_names.insert(def.name.clone());
+            defs.push(def);
+        }
+
+        if let Some(remote_proxy) = &self.remote_proxy {
+            for def in remote_proxy.tool_definations() {
+                if local_names.contains(&def.name) {
+                    tracing::warn!(tool = %def.name, "remote tool conflicts with local tool, skip");
+                    continue;
+                }
+
+                defs.push(def);
+            }
+        }
+
+        self.context.set_tool_defs(defs);
     }
 }
 
@@ -187,6 +219,7 @@ where
     context: Context<M>,
     resolver: R,
     tools: Vec<DynTool>,
+    remote_proxy: Option<RemoteProxy>,
     compact: Option<Compact<M>>,
 }
 
@@ -200,6 +233,7 @@ where
             context,
             resolver,
             tools: Vec::new(),
+            remote_proxy: None,
             compact: None,
         }
     }
@@ -214,20 +248,17 @@ where
         self
     }
 
+    pub fn remote_proxy(mut self, remote_proxy: Option<RemoteProxy>) -> Self {
+        self.remote_proxy = remote_proxy;
+        self
+    }
+
     pub fn build(self) -> Agent<M, R> {
         let mut agent = Agent::from_context(self.context, self.resolver);
+
         agent.compact = self.compact;
-        if !self.tools.is_empty() {
-            let mut tool_defs = Vec::with_capacity(self.tools.len());
-            for tool in &self.tools {
-                tool_defs.push(tool.def().clone());
-            }
-            agent.context.set_tool_defs(tool_defs);
-            for tool in self.tools {
-                let def = tool.def();
-                agent.tools.insert(def.name.clone(), tool);
-            }
-        }
+        agent.remote_proxy = self.remote_proxy;
+        agent.set_tools(self.tools);
 
         agent
     }

@@ -7,8 +7,7 @@ use url::Url;
 
 use crate::ai::agent::tool::DynTool;
 use crate::ai::agent::tool::local::memory::{
-    GenerateMemoryShardTool, ListMemoryShardsTool, ModifyMemoryShardTool,
-    RecallMemoryShardTool,
+    GenerateMemoryShardTool, ListMemoryShardsTool, ModifyMemoryShardTool, RecallMemoryShardTool,
 };
 use crate::ai::agent::tool::local::subagent::RunSubagentsTool;
 use crate::ai::agent::tool::local::web::WebSearchTool;
@@ -60,7 +59,7 @@ pub async fn build_tools() -> Vec<DynTool> {
         }
     };
 
-    let http_client = HttpClient::new(url);
+    let http_client = HttpClient::new(Some(url));
     let token = match PrksClient::login(&http_client, &qid, &password).await {
         Ok(token) => token,
         Err(error) => {

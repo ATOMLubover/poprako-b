@@ -4,7 +4,7 @@ use reqwest::Client;
 use serde::Deserialize;
 
 use crate::ai::agent::tool::ITool;
-use crate::ai::agent::tool::result::{ToolError, ToolResult};
+use crate::ai::agent::tool::result::{ExecutionError, ExecutionResult};
 use crate::ai::resolver::tool::{ParamDef, PropDef, ToolDef};
 
 // ---- Tavily API types ------------------------------------------------------
@@ -43,7 +43,7 @@ impl WebSearchTool {
 
 #[async_trait::async_trait]
 impl ITool for WebSearchTool {
-    fn def(&self) -> ToolDef {
+    fn defination(&self) -> ToolDef {
         let params = ParamDef::new("object")
             .with_properties(vec![
                 (
@@ -58,8 +58,7 @@ impl ITool for WebSearchTool {
                 (
                     "max_results",
                     PropDef::Number {
-                        desc: "Maximum number of results to return (1–10, default 5)."
-                            .to_string(),
+                        desc: "Maximum number of results to return (1–10, default 5).".to_string(),
                         r#enum: None,
                     },
                 ),
@@ -76,7 +75,7 @@ impl ITool for WebSearchTool {
         .with_strict(true)
     }
 
-    async fn exec(&mut self, args: &str) -> ToolResult {
+    async fn execute(&mut self, args: &str) -> ExecutionResult {
         let (query, max_results) = Self::parse_args(args)?;
         let results = self.call_tavily(&query, max_results).await?;
         Ok(format_results(&results))
@@ -86,15 +85,15 @@ impl ITool for WebSearchTool {
 // ---- parsing ---------------------------------------------------------------
 
 impl WebSearchTool {
-    fn parse_args(args: &str) -> Result<(String, u64), ToolError> {
+    fn parse_args(args: &str) -> Result<(String, u64), ExecutionError> {
         let v: serde_json::Value = serde_json::from_str(args)
-            .map_err(|e| ToolError::args_schema(format!("Invalid JSON args: {e}")))?;
+            .map_err(|e| ExecutionError::args_schema(format!("Invalid JSON args: {e}")))?;
 
         let query = v
             .get("query")
             .and_then(|v| v.as_str())
             .filter(|s| !s.is_empty())
-            .ok_or_else(|| ToolError::args_schema("Missing required field 'query'".into()))?
+            .ok_or_else(|| ExecutionError::args_schema("Missing required field 'query'".into()))?
             .to_string();
 
         let max_results = v
@@ -110,7 +109,11 @@ impl WebSearchTool {
 // ---- API call --------------------------------------------------------------
 
 impl WebSearchTool {
-    async fn call_tavily(&self, query: &str, max_results: u64) -> Result<Vec<TavilyResult>, ToolError> {
+    async fn call_tavily(
+        &self,
+        query: &str,
+        max_results: u64,
+    ) -> Result<Vec<TavilyResult>, ExecutionError> {
         let body = serde_json::json!({
             "api_key": self.api_key,
             "query": query,
@@ -125,18 +128,18 @@ impl WebSearchTool {
             .json(&body)
             .send()
             .await
-            .map_err(|e| ToolError::exec_fail(format!("Search request failed: {e}")))?;
+            .map_err(|e| ExecutionError::exec_fail(format!("Search request failed: {e}")))?;
 
         let status = response.status();
         if !status.is_success() {
             let text = response.text().await.unwrap_or_default();
-            return Err(ToolError::exec_fail(format!(
+            return Err(ExecutionError::exec_fail(format!(
                 "Search API returned {status}: {text}"
             )));
         }
 
         let data: TavilyResponse = response.json().await.map_err(|e| {
-            ToolError::exec_fail(format!("Failed to parse search response: {e}"))
+            ExecutionError::exec_fail(format!("Failed to parse search response: {e}"))
         })?;
 
         Ok(data.results)
@@ -202,7 +205,7 @@ mod tests {
             api_key: "test-key".into(),
             client: Client::new(),
         };
-        let def = tool.def();
+        let def = tool.defination();
 
         assert_eq!(def.name, "web_search");
         assert_eq!(def.strict, Some(true));
@@ -218,7 +221,7 @@ mod tests {
             client: Client::new(),
         };
 
-        let result = tool.exec(r#"{"max_results":3}"#).await;
+        let result = tool.execute(r#"{"max_results":3}"#).await;
         assert!(result.is_err(), "missing query should be rejected");
     }
 
@@ -238,9 +241,7 @@ mod tests {
         };
 
         let result = tool
-            .exec(
-                r#"{"query":"Rust programming language latest version 2025","max_results":3}"#,
-            )
+            .execute(r#"{"query":"Rust programming language latest version 2025","max_results":3}"#)
             .await;
 
         assert!(result.is_ok(), "search should succeed: {:?}", result);
@@ -266,9 +267,7 @@ mod tests {
         };
 
         let result = tool
-            .exec(
-                r#"{"query":"xyzlmnopqrstuvwxyz1234567890abcdefghijklmnop","max_results":1}"#,
-            )
+            .execute(r#"{"query":"xyzlmnopqrstuvwxyz1234567890abcdefghijklmnop","max_results":1}"#)
             .await;
 
         assert!(result.is_ok(), "even empty results should be Ok");
@@ -287,7 +286,7 @@ mod tests {
         };
 
         let result = tool
-            .exec(r#"{"query":"hello world","max_results":100}"#)
+            .execute(r#"{"query":"hello world","max_results":100}"#)
             .await;
 
         assert!(result.is_ok(), "clamped request should succeed");
@@ -300,7 +299,7 @@ mod tests {
             client: Client::new(),
         };
 
-        let result = tool.exec(r#"{"query":""}"#).await;
+        let result = tool.execute(r#"{"query":""}"#).await;
         assert!(result.is_err(), "empty query should be rejected");
     }
 }

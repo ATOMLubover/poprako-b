@@ -8,34 +8,45 @@ use crate::http::result::HttpResult;
 
 pub struct HttpClient {
     reqwest: Client,
-    base_url: Url,
+    base_url: Option<Url>,
 }
 
 impl HttpClient {
-    pub fn new(base_url: Url) -> Self {
+    pub fn new(base_url: Option<Url>) -> Self {
         Self {
             reqwest: reqwest::Client::new(),
             base_url,
         }
     }
 
-    pub async fn get<R>(&self, path: &str) -> HttpResult<R>
+    pub async fn get<R>(&self, path: Url) -> HttpResult<R>
     where
         R: serde::de::DeserializeOwned,
     {
-        self.get_with_query::<R>(path, &[], None).await
+        self.get_with_query(path, &[], None).await
+    }
+
+    pub async fn get_path<R>(&self, path: &str) -> HttpResult<R>
+    where
+        R: serde::de::DeserializeOwned,
+    {
+        self.get_path_with_query(path, &[], None).await
     }
 
     pub async fn get_with_query<R>(
         &self,
-        path: &str,
+        path: Url,
         query: &[(String, String)],
         bearer_token: Option<&str>,
     ) -> HttpResult<R>
     where
         R: serde::de::DeserializeOwned,
     {
-        let mut url = self.base_url.join(path)?;
+        let mut url = match &self.base_url {
+            Some(base) => base.join(path.as_str())?,
+            None => path,
+        };
+
         if !query.is_empty() {
             let mut pairs = url.query_pairs_mut();
             for (k, v) in query {
@@ -53,9 +64,27 @@ impl HttpClient {
         Ok(response.json().await?)
     }
 
-    pub async fn post<P, R>(
+    pub async fn get_path_with_query<R>(
         &self,
         path: &str,
+        query: &[(String, String)],
+        bearer_token: Option<&str>,
+    ) -> HttpResult<R>
+    where
+        R: serde::de::DeserializeOwned,
+    {
+        let base = self
+            .base_url
+            .as_ref()
+            .ok_or_else(|| result::HttpError::InvalidUrl("missing base url".to_string()))?;
+        let url = base.join(path)?;
+
+        self.get_with_query(url, query, bearer_token).await
+    }
+
+    pub async fn post<P, R>(
+        &self,
+        path: Url,
         payload: &P,
         query: &[(String, String)],
         bearer_token: Option<&str>,
@@ -64,7 +93,11 @@ impl HttpClient {
         P: serde::ser::Serialize,
         R: serde::de::DeserializeOwned,
     {
-        let mut url = self.base_url.join(path)?;
+        let mut url = match &self.base_url {
+            Some(base) => base.join(path.as_str())?,
+            None => path,
+        };
+
         if !query.is_empty() {
             let mut pairs = url.query_pairs_mut();
             for (k, v) in query {
@@ -89,6 +122,26 @@ impl HttpClient {
             .await?;
 
         Ok(response.json().await?)
+    }
+
+    pub async fn post_path<P, R>(
+        &self,
+        path: &str,
+        payload: &P,
+        query: &[(String, String)],
+        bearer_token: Option<&str>,
+    ) -> HttpResult<R>
+    where
+        P: serde::ser::Serialize,
+        R: serde::de::DeserializeOwned,
+    {
+        let base = self
+            .base_url
+            .as_ref()
+            .ok_or_else(|| result::HttpError::InvalidUrl("missing base url".to_string()))?;
+        let url = base.join(path)?;
+
+        self.post(url, payload, query, bearer_token).await
     }
 }
 

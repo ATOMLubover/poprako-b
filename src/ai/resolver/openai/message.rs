@@ -1,7 +1,7 @@
 use openai_oxide::types::chat::{ChatCompletionMessageParam, ToolCall as OxToolCall, UserContent};
 
 use crate::ai::resolver::action::Action;
-use crate::ai::resolver::message::{IMessage, MessageRef};
+use crate::ai::resolver::message::{IMessage, MessageOwned, MessageRef};
 
 pub trait IOpenAiMessage: IMessage<ToolCall = OxToolCall> {}
 
@@ -45,6 +45,38 @@ impl<'a> From<MessageRef<'a, OxToolCall>> for ChatCompletionMessageParam {
             } => ChatCompletionMessageParam::Tool {
                 tool_call_id: tool_call_id.to_string(),
                 content: content.to_string(),
+            },
+        }
+    }
+}
+
+impl From<MessageOwned<OxToolCall>> for ChatCompletionMessageParam {
+    fn from(value: MessageOwned<OxToolCall>) -> Self {
+        match value {
+            MessageOwned::System { content } => ChatCompletionMessageParam::System {
+                content,
+                name: None,
+            },
+            MessageOwned::User { content } => ChatCompletionMessageParam::User {
+                content: UserContent::Text(content),
+                name: None,
+            },
+            MessageOwned::Assist {
+                content,
+                tool_calls,
+                refusal,
+            } => ChatCompletionMessageParam::Assistant {
+                content,
+                name: None,
+                tool_calls,
+                refusal,
+            },
+            MessageOwned::Tool {
+                tool_call_id,
+                content,
+            } => ChatCompletionMessageParam::Tool {
+                tool_call_id,
+                content,
             },
         }
     }

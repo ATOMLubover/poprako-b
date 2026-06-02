@@ -1,7 +1,7 @@
 use std::path::{Component, Path, PathBuf};
 
 use crate::ai::agent::tool::ITool;
-use crate::ai::agent::tool::result::{ToolError, ToolResult};
+use crate::ai::agent::tool::result::{ExecutionError, ExecutionResult};
 use crate::ai::resolver::tool::{ParamDef, PropDef, ToolDef};
 
 pub struct CreateFileTool {
@@ -33,7 +33,7 @@ impl CreateFileTool {
 
 #[async_trait::async_trait]
 impl ITool for CreateFileTool {
-    fn def(&self) -> ToolDef {
+    fn defination(&self) -> ToolDef {
         let params = ParamDef::new("object")
             .with_properties(vec![
                 (
@@ -63,19 +63,18 @@ impl ITool for CreateFileTool {
         .with_strict(true)
     }
 
-    async fn exec(&mut self, args: &str) -> ToolResult {
+    async fn execute(&mut self, args: &str) -> ExecutionResult {
         let v: serde_json::Value = serde_json::from_str(args)
-            .map_err(|e| ToolError::args_schema(format!("Invalid JSON args: {}", e)))?;
+            .map_err(|e| ExecutionError::args_schema(format!("Invalid JSON args: {}", e)))?;
 
         let path = v
             .get("path")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| ToolError::args_schema("Missing required field 'path'".into()))?;
+            .ok_or_else(|| ExecutionError::args_schema("Missing required field 'path'".into()))?;
 
-        let content = v
-            .get("content")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| ToolError::args_schema("Missing required field 'content'".into()))?;
+        let content = v.get("content").and_then(|v| v.as_str()).ok_or_else(|| {
+            ExecutionError::args_schema("Missing required field 'content'".into())
+        })?;
 
         // Security: reject path traversal.
         let _ = check_path_traversal(path)?;
@@ -84,13 +83,13 @@ impl ITool for CreateFileTool {
         // Create parent directories if needed.
         if let Some(parent) = full_path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| {
-                ToolError::exec_fail(format!("Failed to create parent directories: {e}"))
+                ExecutionError::exec_fail(format!("Failed to create parent directories: {e}"))
             })?;
         }
 
         // Write the file.
         std::fs::write(&full_path, content)
-            .map_err(|e| ToolError::exec_fail(format!("Failed to write file: {e}")))?;
+            .map_err(|e| ExecutionError::exec_fail(format!("Failed to write file: {e}")))?;
 
         self.created_files.push(full_path);
 
@@ -112,7 +111,7 @@ impl ListFilesTool {
 
 #[async_trait::async_trait]
 impl ITool for ListFilesTool {
-    fn def(&self) -> ToolDef {
+    fn defination(&self) -> ToolDef {
         let params = ParamDef::new("object")
             .with_properties(vec![(
                 "path",
@@ -136,14 +135,11 @@ impl ITool for ListFilesTool {
         .with_strict(true)
     }
 
-    async fn exec(&mut self, args: &str) -> ToolResult {
+    async fn execute(&mut self, args: &str) -> ExecutionResult {
         let v: serde_json::Value = serde_json::from_str(args)
-            .map_err(|e| ToolError::args_schema(format!("Invalid JSON args: {e}")))?;
+            .map_err(|e| ExecutionError::args_schema(format!("Invalid JSON args: {e}")))?;
 
-        let path = v
-            .get("path")
-            .and_then(|v| v.as_str())
-            .unwrap_or(".");
+        let path = v.get("path").and_then(|v| v.as_str()).unwrap_or(".");
 
         // An empty string defaults to base dir.
         let path = if path.is_empty() { "." } else { path };
@@ -152,13 +148,13 @@ impl ITool for ListFilesTool {
         let full_path = self.base_dir.join(path);
 
         let entries = std::fs::read_dir(&full_path).map_err(|e| {
-            ToolError::exec_fail(format!("Failed to read directory '{}': {e}", path))
+            ExecutionError::exec_fail(format!("Failed to read directory '{}': {e}", path))
         })?;
 
         let mut listing = Vec::new();
         for entry in entries {
             let entry = entry.map_err(|e| {
-                ToolError::exec_fail(format!("Failed to read entry in '{}': {e}", path))
+                ExecutionError::exec_fail(format!("Failed to read entry in '{}': {e}", path))
             })?;
 
             let name = entry.file_name();
@@ -173,7 +169,7 @@ impl ITool for ListFilesTool {
         }
 
         if listing.is_empty() {
-            Ok(format!("(empty directory)"))
+            Ok("(empty directory)".to_string())
         } else {
             listing.sort();
             Ok(listing.join("\n"))
@@ -194,13 +190,13 @@ impl ReadFileTool {
 }
 
 /// Shared path-traversal check used by both local tools.
-fn check_path_traversal(path: &str) -> Result<PathBuf, ToolError> {
+fn check_path_traversal(path: &str) -> Result<PathBuf, ExecutionError> {
     let relative = Path::new(path);
     if relative
         .components()
         .any(|c| matches!(c, Component::ParentDir))
     {
-        return Err(ToolError::exec_fail(
+        return Err(ExecutionError::exec_fail(
             "Path traversal not allowed: path must not contain '..'".into(),
         ));
     }
@@ -209,7 +205,7 @@ fn check_path_traversal(path: &str) -> Result<PathBuf, ToolError> {
 
 #[async_trait::async_trait]
 impl ITool for ReadFileTool {
-    fn def(&self) -> ToolDef {
+    fn defination(&self) -> ToolDef {
         let params = ParamDef::new("object")
             .with_properties(vec![(
                 "path",
@@ -229,20 +225,20 @@ impl ITool for ReadFileTool {
         .with_strict(true)
     }
 
-    async fn exec(&mut self, args: &str) -> ToolResult {
+    async fn execute(&mut self, args: &str) -> ExecutionResult {
         let v: serde_json::Value = serde_json::from_str(args)
-            .map_err(|e| ToolError::args_schema(format!("Invalid JSON args: {e}")))?;
+            .map_err(|e| ExecutionError::args_schema(format!("Invalid JSON args: {e}")))?;
 
         let path = v
             .get("path")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| ToolError::args_schema("Missing required field 'path'".into()))?;
+            .ok_or_else(|| ExecutionError::args_schema("Missing required field 'path'".into()))?;
 
         let _ = check_path_traversal(path)?;
         let full_path = self.base_dir.join(path);
 
         let content = std::fs::read_to_string(&full_path)
-            .map_err(|e| ToolError::exec_fail(format!("Failed to read file: {e}")))?;
+            .map_err(|e| ExecutionError::exec_fail(format!("Failed to read file: {e}")))?;
 
         Ok(content)
     }
@@ -255,7 +251,7 @@ mod tests {
     #[test]
     fn tool_definition_is_correct() {
         let tool = CreateFileTool::new(PathBuf::from("/tmp"));
-        let def = tool.def();
+        let def = tool.defination();
 
         assert_eq!(def.name, "create_file");
         assert_eq!(def.strict, Some(true));
@@ -277,7 +273,7 @@ mod tests {
 
         let mut tool = CreateFileTool::new(dir.clone());
         let args = r#"{"path":"sub/hello.txt","content":"hello world"}"#;
-        let result = tool.exec(args).await;
+        let result = tool.execute(args).await;
 
         assert!(result.is_ok(), "execute should succeed: {:?}", result);
         assert!(target.exists(), "file should exist at {}", target.display());
@@ -298,7 +294,7 @@ mod tests {
         let mut tool = CreateFileTool::new(dir);
 
         let result = tool
-            .exec(r#"{"path":"../../etc/passwd","content":"pwned"}"#)
+            .execute(r#"{"path":"../../etc/passwd","content":"pwned"}"#)
             .await;
         assert!(result.is_err(), "path traversal should be rejected");
     }
@@ -308,10 +304,10 @@ mod tests {
         let dir = std::env::temp_dir().join("poprako-test-missing");
         let mut tool = CreateFileTool::new(dir);
 
-        let result = tool.exec(r#"{"path":"test.txt"}"#).await;
+        let result = tool.execute(r#"{"path":"test.txt"}"#).await;
         assert!(result.is_err(), "missing content should be rejected");
 
-        let result = tool.exec(r#"{"content":"test"}"#).await;
+        let result = tool.execute(r#"{"content":"test"}"#).await;
         assert!(result.is_err(), "missing path should be rejected");
     }
 
@@ -320,7 +316,7 @@ mod tests {
     #[test]
     fn list_files_tool_definition_is_correct() {
         let tool = ListFilesTool::new(PathBuf::from("/tmp"));
-        let def = tool.def();
+        let def = tool.defination();
 
         assert_eq!(def.name, "list_files");
         assert_eq!(def.strict, Some(true));
@@ -341,7 +337,7 @@ mod tests {
 
         let mut tool = ListFilesTool::new(dir.clone());
 
-        let result = tool.exec(r#"{"path":"."}"#).await;
+        let result = tool.execute(r#"{"path":"."}"#).await;
         assert!(result.is_ok(), "list should succeed: {:?}", result);
         let output = result.unwrap();
 
@@ -364,12 +360,8 @@ mod tests {
 
         let mut tool = ListFilesTool::new(dir.clone());
 
-        let result = tool.exec(r#"{"path":"sub"}"#).await;
-        assert!(
-            result.is_ok(),
-            "list sub should succeed: {:?}",
-            result
-        );
+        let result = tool.execute(r#"{"path":"sub"}"#).await;
+        assert!(result.is_ok(), "list sub should succeed: {:?}", result);
         let output = result.unwrap();
         assert!(
             output.contains("nested.txt"),
@@ -387,7 +379,7 @@ mod tests {
 
         let mut tool = ListFilesTool::new(dir.clone());
 
-        let result = tool.exec(r#"{"path":"."}"#).await;
+        let result = tool.execute(r#"{"path":"."}"#).await;
         assert!(result.is_ok(), "list empty should succeed");
         assert_eq!(result.unwrap(), "(empty directory)");
 
@@ -402,7 +394,7 @@ mod tests {
         std::fs::write(dir.join("x.txt"), "x").expect("write");
 
         let mut tool = ListFilesTool::new(dir.clone());
-        let result = tool.exec(r#"{"path":""}"#).await;
+        let result = tool.execute(r#"{"path":""}"#).await;
 
         assert!(result.is_ok(), "empty path should default to root");
         assert!(result.unwrap().contains("x.txt"));
@@ -415,7 +407,7 @@ mod tests {
         let dir = std::env::temp_dir().join("poprako-test-list-traversal");
         let mut tool = ListFilesTool::new(dir);
 
-        let result = tool.exec(r#"{"path":"../../etc"}"#).await;
+        let result = tool.execute(r#"{"path":"../../etc"}"#).await;
         assert!(result.is_err(), "path traversal should be rejected");
     }
 
@@ -424,7 +416,7 @@ mod tests {
         let dir = std::env::temp_dir().join("poprako-test-list-nonexistent");
         let mut tool = ListFilesTool::new(dir);
 
-        let result = tool.exec(r#"{"path":"nope"}"#).await;
+        let result = tool.execute(r#"{"path":"nope"}"#).await;
         assert!(result.is_err(), "nonexistent dir should fail");
     }
 
@@ -433,7 +425,7 @@ mod tests {
     #[test]
     fn read_file_tool_definition_is_correct() {
         let tool = ReadFileTool::new(PathBuf::from("/tmp"));
-        let def = tool.def();
+        let def = tool.defination();
 
         assert_eq!(def.name, "read_file");
         assert_eq!(def.strict, Some(true));
@@ -452,7 +444,7 @@ mod tests {
         std::fs::write(&target, "hello read").expect("write file");
 
         let mut tool = ReadFileTool::new(dir.clone());
-        let result = tool.exec(r#"{"path":"test.txt"}"#).await;
+        let result = tool.execute(r#"{"path":"test.txt"}"#).await;
 
         assert!(result.is_ok(), "read should succeed: {:?}", result);
         assert_eq!(result.unwrap(), "hello read");
@@ -465,7 +457,7 @@ mod tests {
         let dir = std::env::temp_dir().join("poprako-test-read-nonexistent");
         let mut tool = ReadFileTool::new(dir);
 
-        let result = tool.exec(r#"{"path":"nope.txt"}"#).await;
+        let result = tool.execute(r#"{"path":"nope.txt"}"#).await;
         assert!(result.is_err(), "reading nonexistent file should fail");
     }
 
@@ -474,7 +466,7 @@ mod tests {
         let dir = std::env::temp_dir().join("poprako-test-read-traversal");
         let mut tool = ReadFileTool::new(dir);
 
-        let result = tool.exec(r#"{"path":"../../etc/passwd"}"#).await;
+        let result = tool.execute(r#"{"path":"../../etc/passwd"}"#).await;
         assert!(result.is_err(), "path traversal should be rejected");
     }
 }

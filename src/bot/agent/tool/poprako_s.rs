@@ -7,7 +7,7 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use crate::ai::agent::tool::ITool;
-use crate::ai::agent::tool::result::{ToolError, ToolResult};
+use crate::ai::agent::tool::result::{ExecutionError, ExecutionResult};
 use crate::ai::resolver::tool::{ParamDef, PropDef, ToolDef};
 
 fn default_offset() -> i64 {
@@ -18,14 +18,14 @@ fn default_limit() -> i64 {
     20
 }
 
-fn parse_json_args<T: for<'de> Deserialize<'de>>(args: &str) -> Result<T, ToolError> {
+fn parse_json_args<T: for<'de> Deserialize<'de>>(args: &str) -> Result<T, ExecutionError> {
     serde_json::from_str(args)
-        .map_err(|e| ToolError::args_schema(format!("invalid args json: {e}")))
+        .map_err(|e| ExecutionError::args_schema(format!("invalid args json: {e}")))
 }
 
-fn pretty_json<T: Serialize>(v: &T) -> ToolResult {
+fn pretty_json<T: Serialize>(v: &T) -> ExecutionResult {
     serde_json::to_string_pretty(v)
-        .map_err(|e| ToolError::exec_fail(format!("failed to serialize output: {e}")))
+        .map_err(|e| ExecutionError::exec_fail(format!("failed to serialize output: {e}")))
 }
 
 fn workflow_phase_enum() -> Option<Vec<f64>> {
@@ -52,7 +52,7 @@ impl ListMyMembersTool {
 
 #[async_trait::async_trait]
 impl ITool for ListMyMembersTool {
-    fn def(&self) -> ToolDef {
+    fn defination(&self) -> ToolDef {
         let params = ParamDef::new("object").with_properties(vec![
             (
                 "offset",
@@ -78,13 +78,13 @@ impl ITool for ListMyMembersTool {
         .with_strict(true)
     }
 
-    async fn exec(&mut self, args: &str) -> ToolResult {
+    async fn execute(&mut self, args: &str) -> ExecutionResult {
         let args: PagingArgs = parse_json_args(args)?;
         let data = self
             .prks_client
             .list_my_members(args.offset, args.limit)
             .await
-            .map_err(ToolError::exec_fail)?;
+            .map_err(ExecutionError::exec_fail)?;
 
         pretty_json(&data)
     }
@@ -111,7 +111,7 @@ impl ListTeamWorksetsTool {
 
 #[async_trait::async_trait]
 impl ITool for ListTeamWorksetsTool {
-    fn def(&self) -> ToolDef {
+    fn defination(&self) -> ToolDef {
         let params = ParamDef::new("object")
             .with_properties(vec![
                 (
@@ -146,13 +146,13 @@ impl ITool for ListTeamWorksetsTool {
         .with_strict(true)
     }
 
-    async fn exec(&mut self, args: &str) -> ToolResult {
+    async fn execute(&mut self, args: &str) -> ExecutionResult {
         let args: TeamWorksetArgs = parse_json_args(args)?;
         let data = self
             .prks_client
             .list_team_worksets(&args.team_id, args.offset, args.limit)
             .await
-            .map_err(ToolError::exec_fail)?;
+            .map_err(ExecutionError::exec_fail)?;
 
         pretty_json(&data)
     }
@@ -194,7 +194,7 @@ impl ListWorksetComicsTool {
 
 #[async_trait::async_trait]
 impl ITool for ListWorksetComicsTool {
-    fn def(&self) -> ToolDef {
+    fn defination(&self) -> ToolDef {
         let params = ParamDef::new("object")
             .with_properties(vec![
                 (
@@ -278,7 +278,7 @@ impl ITool for ListWorksetComicsTool {
         .with_strict(true)
     }
 
-    async fn exec(&mut self, args: &str) -> ToolResult {
+    async fn execute(&mut self, args: &str) -> ExecutionResult {
         let args: WorksetComicsArgs = parse_json_args(args)?;
         let data = self
             .prks_client
@@ -295,7 +295,7 @@ impl ITool for ListWorksetComicsTool {
                 args.limit,
             )
             .await
-            .map_err(ToolError::exec_fail)?;
+            .map_err(ExecutionError::exec_fail)?;
 
         pretty_json(&data)
     }
@@ -318,7 +318,7 @@ impl GetComicPinnedChapterTool {
 
 #[async_trait::async_trait]
 impl ITool for GetComicPinnedChapterTool {
-    fn def(&self) -> ToolDef {
+    fn defination(&self) -> ToolDef {
         let params = ParamDef::new("object")
             .with_properties(vec![(
                 "comic_id",
@@ -337,13 +337,13 @@ impl ITool for GetComicPinnedChapterTool {
         .with_strict(true)
     }
 
-    async fn exec(&mut self, args: &str) -> ToolResult {
+    async fn execute(&mut self, args: &str) -> ExecutionResult {
         let args: ComicPinnedArgs = parse_json_args(args)?;
         let data = self
             .prks_client
             .get_comic_pinned_chapter(&args.comic_id)
             .await
-            .map_err(ToolError::exec_fail)?;
+            .map_err(ExecutionError::exec_fail)?;
 
         pretty_json(&data)
     }
@@ -370,7 +370,7 @@ impl ListComicChaptersTool {
 
 #[async_trait::async_trait]
 impl ITool for ListComicChaptersTool {
-    fn def(&self) -> ToolDef {
+    fn defination(&self) -> ToolDef {
         let params = ParamDef::new("object")
             .with_properties(vec![
                 (
@@ -405,13 +405,13 @@ impl ITool for ListComicChaptersTool {
         .with_strict(true)
     }
 
-    async fn exec(&mut self, args: &str) -> ToolResult {
+    async fn execute(&mut self, args: &str) -> ExecutionResult {
         let args: ComicChaptersArgs = parse_json_args(args)?;
         let data = self
             .prks_client
             .list_comic_chapters(&args.comic_id, args.offset, args.limit)
             .await
-            .map_err(ToolError::exec_fail)?;
+            .map_err(ExecutionError::exec_fail)?;
 
         pretty_json(&data)
     }
@@ -438,7 +438,7 @@ impl ListChapterAssignmentsTool {
 
 #[async_trait::async_trait]
 impl ITool for ListChapterAssignmentsTool {
-    fn def(&self) -> ToolDef {
+    fn defination(&self) -> ToolDef {
         let params = ParamDef::new("object")
             .with_properties(vec![
                 (
@@ -473,13 +473,13 @@ impl ITool for ListChapterAssignmentsTool {
         .with_strict(true)
     }
 
-    async fn exec(&mut self, args: &str) -> ToolResult {
+    async fn execute(&mut self, args: &str) -> ExecutionResult {
         let args: ChapterAssignmentsArgs = parse_json_args(args)?;
         let data = self
             .prks_client
             .list_chapter_assignments(&args.chapter_id, args.offset, args.limit)
             .await
-            .map_err(ToolError::exec_fail)?;
+            .map_err(ExecutionError::exec_fail)?;
 
         pretty_json(&data)
     }
@@ -506,7 +506,7 @@ impl ListUserAssignmentsTool {
 
 #[async_trait::async_trait]
 impl ITool for ListUserAssignmentsTool {
-    fn def(&self) -> ToolDef {
+    fn defination(&self) -> ToolDef {
         let params = ParamDef::new("object")
             .with_properties(vec![
                 (
@@ -541,13 +541,13 @@ impl ITool for ListUserAssignmentsTool {
         .with_strict(true)
     }
 
-    async fn exec(&mut self, args: &str) -> ToolResult {
+    async fn execute(&mut self, args: &str) -> ExecutionResult {
         let args: UserAssignmentsArgs = parse_json_args(args)?;
         let data = self
             .prks_client
             .list_user_assignments(&args.user_id, args.offset, args.limit)
             .await
-            .map_err(ToolError::exec_fail)?;
+            .map_err(ExecutionError::exec_fail)?;
 
         pretty_json(&data)
     }

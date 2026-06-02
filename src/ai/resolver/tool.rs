@@ -1,10 +1,14 @@
 use std::collections::HashMap;
 
-#[derive(Debug, Clone, Default)]
+use serde::Deserialize;
+use serde::de::Error as DeError;
+
+#[derive(Debug, Clone, Default, Deserialize)]
 pub struct ToolDef {
     pub name: String,
     pub description: String,
     pub parameters: ParamDef,
+    #[serde(default)]
     pub strict: Option<bool>,
 }
 
@@ -24,11 +28,15 @@ impl ToolDef {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct ParamDef {
+    #[serde(rename = "type")]
     pub r#type: String,
+    #[serde(default, rename = "properties")]
     pub props: HashMap<String, PropDef>,
+    #[serde(default)]
     pub required: Option<Vec<String>>,
+    #[serde(default, rename = "additionalProperties")]
     pub additional_props: Option<bool>,
 }
 
@@ -133,6 +141,72 @@ pub enum PropDef {
     Object {
         desc: String,
     },
+}
+
+#[derive(Deserialize)]
+struct PropSchema {
+    #[serde(rename = "type")]
+    typ: String,
+    #[serde(default, rename = "description")]
+    desc: String,
+    #[serde(default, rename = "enum")]
+    enum_values: Option<Vec<serde_json::Value>>,
+}
+
+impl<'de> Deserialize<'de> for PropDef {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let schema = PropSchema::deserialize(deserializer)?;
+
+        match schema.typ.as_str() {
+            "string" => {
+                let enum_values = match schema.enum_values {
+                    Some(values) => {
+                        let mut strings = Vec::with_capacity(values.len());
+                        for value in values {
+                            let string = value.as_str().ok_or_else(|| {
+                                D::Error::custom("string enum must contain strings")
+                            })?;
+                            strings.push(string.to_string());
+                        }
+                        Some(strings)
+                    }
+                    None => None,
+                };
+                Ok(Self::String {
+                    desc: schema.desc,
+                    r#enum: enum_values,
+                })
+            }
+            "number" => {
+                let enum_values = match schema.enum_values {
+                    Some(values) => {
+                        let mut numbers = Vec::with_capacity(values.len());
+                        for value in values {
+                            let number = value.as_f64().ok_or_else(|| {
+                                D::Error::custom("number enum must contain numbers")
+                            })?;
+                            numbers.push(number);
+                        }
+                        Some(numbers)
+                    }
+                    None => None,
+                };
+                Ok(Self::Number {
+                    desc: schema.desc,
+                    r#enum: enum_values,
+                })
+            }
+            "boolean" => Ok(Self::Boolean { desc: schema.desc }),
+            "array" => Ok(Self::Array { desc: schema.desc }),
+            "object" => Ok(Self::Object { desc: schema.desc }),
+            other => Err(D::Error::custom(format!(
+                "unsupported property type: {other}"
+            ))),
+        }
+    }
 }
 
 impl PropDef {

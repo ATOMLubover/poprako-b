@@ -1,5 +1,5 @@
 use crate::ai::resolver::context::Context;
-use crate::ai::resolver::message::IMessage;
+use crate::ai::resolver::message::{IMessage, MessageRole};
 
 pub fn sliding_window_compact<M>(cx: &mut Context<M>)
 where
@@ -26,7 +26,7 @@ where
     let user_first = messages
         .iter()
         .skip(1)
-        .position(|m| m.is_user())
+        .position(|m| m.role() == MessageRole::User)
         .map(|i| i + 1);
 
     if let Some(i) = user_first
