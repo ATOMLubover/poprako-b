@@ -26,7 +26,6 @@ const BATCH_REPLY_DELAY_MS: std::ops::Range<u64> = 2000..3000;
 pub struct BotServer {
     conn: Arc<ReverseWsConnect>,
     state: BotState,
-    self_id: i64,
 }
 
 impl BotServer {
@@ -38,20 +37,17 @@ impl BotServer {
         let conn = ReverseWsConnect::new(config.reverse_ws.into()).await?;
 
         let agent = BotAgent::new().await?;
-        let state = BotState::new(agent);
+        let state = BotState::new(agent, config.self_qid);
 
-        Ok(Self {
-            conn,
-            state,
-            self_id: config.self_id,
-        })
+        Ok(Self { conn, state })
     }
 
     pub async fn serve(mut self) -> anyhow::Result<()> {
         let reply_sender = GroupReplySender::new(self.conn.clone());
+        let self_qid = self.state.self_qid();
 
-        spawn_keepalive_task(self.conn.clone(), self.self_id);
-        spawn_spam_task(self.conn.clone(), self.self_id);
+        spawn_keepalive_task(self.conn.clone(), self_qid);
+        spawn_spam_task(self.conn.clone(), self_qid);
 
         let mut event_recv = self.conn.subscribe().await;
         let mut prompt_recv = spawn_refresh_system_promt_task()?;
@@ -170,7 +166,7 @@ fn filter_group_message(
 
     let message = extract_group_message(event)?;
 
-    if message.user_id() == message.self_id() {
+    if message.user_id().is_some_and(|qid| state.is_self(qid)) {
         return None;
     }
 

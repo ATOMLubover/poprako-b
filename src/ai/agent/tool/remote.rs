@@ -177,12 +177,14 @@ impl RemoteProxy {
 mod tests {
     use super::*;
 
-    use crate::ai::resolver::tool::ParamDef;
+    use axum::Json;
+    use axum::Router;
+    use axum::extract::State;
+    use axum::routing::{get, post};
 
-    use std::io::Read;
-    use std::io::Write;
-    use std::net::TcpListener;
-    use std::thread;
+    use std::sync::Arc;
+    use tokio::sync::Mutex;
+    use tokio::sync::oneshot;
 
     struct FakeToolCall {
         id: String,
@@ -204,31 +206,27 @@ mod tests {
         }
     }
 
-    fn spawn_json_server(body: String) -> Url {
-        let listener = TcpListener::bind("127.0.0.1:0").expect("bind test server");
-        let addr = listener.local_addr().expect("test server local addr");
-
-        thread::spawn(move || {
-            let (mut stream, _) = listener.accept().expect("accept test request");
-            let mut buffer = [0; 4096];
-            let _ = stream.read(&mut buffer);
-
-            let response = format!(
-                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                body.len(),
-                body
-            );
-            stream
-                .write_all(response.as_bytes())
-                .expect("write test response");
-        });
-
-        Url::parse(&format!("http://{addr}/")).expect("test server url")
+    #[derive(Clone)]
+    struct TestRemoteServerState {
+        call_url: String,
+        received_calls: Arc<Mutex<Vec<String>>>,
     }
 
-    #[tokio::test]
-    async fn registers_remote_tools() {
-        let server_body = serde_json::json!({
+    struct TestRemoteServer {
+        register_url: Url,
+        received_calls: Arc<Mutex<Vec<String>>>,
+        shutdown: oneshot::Sender<()>,
+    }
+
+    #[derive(Deserialize)]
+    struct TestRemoteCallPayload {
+        args: String,
+    }
+
+    async fn register_handler(
+        State(state): State<TestRemoteServerState>,
+    ) -> Json<serde_json::Value> {
+        Json(serde_json::json!({
             "tools": [
                 {
                     "defination": {
@@ -236,89 +234,99 @@ mod tests {
                         "description": "Echo remote input.",
                         "parameters": {
                             "type": "object",
-                            "properties": {},
-                            "required": [],
+                            "properties": {
+                                "text": {
+                                    "type": "string",
+                                    "description": "Text to echo."
+                                }
+                            },
+                            "required": ["text"],
                             "additionalProperties": false
                         },
                         "strict": true
                     },
-                    "call_url": "http://127.0.0.1:1/call"
+                    "call_url": state.call_url
+                }
+            ]
+        }))
+    }
+
+    async fn call_handler(
+        State(state): State<TestRemoteServerState>,
+        Json(payload): Json<TestRemoteCallPayload>,
+    ) -> Json<serde_json::Value> {
+        state.received_calls.lock().await.push(payload.args.clone());
+
+        Json(serde_json::json!({
+            "status": "Success",
+            "data": {
+                "output": format!("remote ok: {}", payload.args)
+            }
+        }))
+    }
+
+    async fn spawn_remote_server() -> TestRemoteServer {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind test server");
+        let addr = listener.local_addr().expect("test server local addr");
+        let base_url = format!("http://{}", addr);
+        let received_calls = Arc::new(Mutex::new(Vec::new()));
+        let state = TestRemoteServerState {
+            call_url: format!("{}/call", base_url),
+            received_calls: received_calls.clone(),
+        };
+        let app = Router::new()
+            .route("/register", get(register_handler))
+            .route("/call", post(call_handler))
+            .with_state(state);
+        let (shutdown, shutdown_rx) = oneshot::channel();
+
+        tokio::spawn(async move {
+            axum::serve(listener, app)
+                .with_graceful_shutdown(async move {
+                    let _ = shutdown_rx.await;
+                })
+                .await
+                .expect("run test server");
+        });
+
+        TestRemoteServer {
+            register_url: Url::parse(&format!("{}/register", base_url)).expect("test register url"),
+            received_calls,
+            shutdown,
+        }
+    }
+
+    #[tokio::test]
+    async fn loads_config_registers_remote_tools_and_proxies_call() {
+        let server = spawn_remote_server().await;
+        let config_json = serde_json::json!({
+            "servers": [
+                {
+                    "name": "test",
+                    "register_url": server.register_url.as_str()
                 }
             ]
         })
         .to_string();
-
-        let register_url = spawn_json_server(server_body);
+        let config: RemoteToolConfig = serde_json::from_str(&config_json).unwrap();
         let mut proxy = RemoteProxy {
             client: HttpClient::new(None),
             tools: HashMap::new(),
         };
 
-        proxy
-            .register_tools(&[RemoteServerConfig {
-                name: "test".to_string(),
-                register_url,
-            }])
-            .await
-            .unwrap();
+        assert_eq!(config.servers.len(), 1);
+        assert_eq!(config.servers[0].name, "test");
+
+        proxy.register_tools(&config.servers).await.unwrap();
         let definations = proxy.tool_definations();
 
         assert_eq!(definations.len(), 1);
         assert_eq!(definations[0].name, "remote_echo");
         assert_eq!(definations[0].strict, Some(true));
-    }
+        assert!(proxy.has_tool("remote_echo"));
 
-    #[tokio::test]
-    async fn remote_tool_execute_returns_execution_output_only() {
-        let body = serde_json::json!({
-            "status": "Success",
-            "data": {
-                "output": "remote ok"
-            }
-        })
-        .to_string();
-        let call_url = spawn_json_server(body);
-        let tool = RemoteTool {
-            defination: ToolDef::new("remote_echo", "Echo remote input.", ParamDef::new("object")),
-            call_url,
-        };
-        let call = FakeToolCall {
-            id: "call-1".to_string(),
-            name: "remote_echo".to_string(),
-            args: r#"{"text":"hello"}"#.to_string(),
-        };
-
-        let output = tool.execute(&HttpClient::new(None), &call).await.unwrap();
-
-        assert_eq!(output, "remote ok");
-    }
-
-    #[tokio::test]
-    async fn execute_proxy_returns_call_output_with_id() {
-        let body = serde_json::json!({
-            "status": "Success",
-            "data": {
-                "output": "remote ok"
-            }
-        })
-        .to_string();
-        let call_url = spawn_json_server(body);
-        let mut tools = HashMap::new();
-        tools.insert(
-            "remote_echo".to_string(),
-            RemoteTool {
-                defination: ToolDef::new(
-                    "remote_echo",
-                    "Echo remote input.",
-                    ParamDef::new("object"),
-                ),
-                call_url,
-            },
-        );
-        let proxy = RemoteProxy {
-            client: HttpClient::new(None),
-            tools,
-        };
         let call = FakeToolCall {
             id: "call-1".to_string(),
             name: "remote_echo".to_string(),
@@ -328,6 +336,10 @@ mod tests {
         let output = proxy.handle_call(&call).await.unwrap();
 
         assert_eq!(output.call_id, "call-1");
-        assert_eq!(output.content, "remote ok");
+        assert_eq!(output.content, r#"remote ok: {"text":"hello"}"#);
+
+        let received_calls = server.received_calls.lock().await;
+        assert_eq!(received_calls.as_slice(), [r#"{"text":"hello"}"#]);
+        server.shutdown.send(()).expect("shutdown test server");
     }
 }
