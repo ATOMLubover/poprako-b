@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use serde::Deserialize;
 
 use crate::ai::agent::tool::ITool;
-use crate::ai::agent::tool::result::{ToolError, ToolResult};
+use crate::ai::agent::tool::result::{ExecutionError, ExecutionResult};
 use crate::ai::resolver::tool::{ParamDef, PropDef, ToolDef};
 
 // ---------------------------------------------------------------------------
@@ -55,7 +55,7 @@ impl ListMemoryShardsTool {
 
 #[async_trait::async_trait]
 impl ITool for ListMemoryShardsTool {
-    fn def(&self) -> ToolDef {
+    fn defination(&self) -> ToolDef {
         ToolDef::new(
             "list_memory_shards",
             "List all available memory shards with their name, description, and tags. \
@@ -65,19 +65,20 @@ impl ITool for ListMemoryShardsTool {
         )
     }
 
-    async fn exec(&mut self, _args: &str) -> ToolResult {
+    async fn execute(&mut self, _args: &str) -> ExecutionResult {
         let mut shards = Vec::new();
 
         if !self.shards_dir.exists() {
             return Ok("No memory shards directory found.".to_string());
         }
 
-        let dir = std::fs::read_dir(&self.shards_dir)
-            .map_err(|e| ToolError::exec_fail(format!("Failed to read shards directory: {e}")))?;
+        let dir = std::fs::read_dir(&self.shards_dir).map_err(|e| {
+            ExecutionError::exec_fail(format!("Failed to read shards directory: {e}"))
+        })?;
 
         for entry in dir {
             let entry = entry.map_err(|e| {
-                ToolError::exec_fail(format!("Failed to read directory entry: {e}"))
+                ExecutionError::exec_fail(format!("Failed to read directory entry: {e}"))
             })?;
 
             let path = entry.path();
@@ -91,11 +92,14 @@ impl ITool for ListMemoryShardsTool {
             }
 
             let raw = std::fs::read_to_string(&shard_file).map_err(|e| {
-                ToolError::exec_fail(format!("Failed to read shard file {:?}: {e}", shard_file))
+                ExecutionError::exec_fail(format!(
+                    "Failed to read shard file {:?}: {e}",
+                    shard_file
+                ))
             })?;
 
             let (meta, _body) = parse_frontmatter(&raw).map_err(|e| {
-                ToolError::exec_fail(format!("Failed to parse {:?}: {e}", shard_file))
+                ExecutionError::exec_fail(format!("Failed to parse {:?}: {e}", shard_file))
             })?;
 
             shards.push(format!(
@@ -132,7 +136,7 @@ impl RecallMemoryShardTool {
 
 #[async_trait::async_trait]
 impl ITool for RecallMemoryShardTool {
-    fn def(&self) -> ToolDef {
+    fn defination(&self) -> ToolDef {
         let params = ParamDef::new("object")
             .with_properties(vec![(
                 "shard_name",
@@ -154,23 +158,25 @@ impl ITool for RecallMemoryShardTool {
         .with_strict(true)
     }
 
-    async fn exec(&mut self, args: &str) -> ToolResult {
+    async fn execute(&mut self, args: &str) -> ExecutionResult {
         let v: serde_json::Value = serde_json::from_str(args)
-            .map_err(|e| ToolError::args_schema(format!("Invalid JSON args: {e}")))?;
+            .map_err(|e| ExecutionError::args_schema(format!("Invalid JSON args: {e}")))?;
 
         let shard_name = v
             .get("shard_name")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| ToolError::args_schema("Missing required field 'shard_name'".into()))?;
+            .ok_or_else(|| {
+                ExecutionError::args_schema("Missing required field 'shard_name'".into())
+            })?;
 
         let shard_file = self.shards_dir.join(shard_name).join("shard.md");
 
         let raw = std::fs::read_to_string(&shard_file).map_err(|e| {
-            ToolError::exec_fail(format!("Failed to read shard '{shard_name}': {e}"))
+            ExecutionError::exec_fail(format!("Failed to read shard '{shard_name}': {e}"))
         })?;
 
         let (_meta, body) = parse_frontmatter(&raw).map_err(|e| {
-            ToolError::exec_fail(format!("Failed to parse shard '{shard_name}': {e}"))
+            ExecutionError::exec_fail(format!("Failed to parse shard '{shard_name}': {e}"))
         })?;
 
         Ok(body.trim_start().to_string())
@@ -195,7 +201,7 @@ impl GenerateMemoryShardTool {
 
 #[async_trait::async_trait]
 impl ITool for GenerateMemoryShardTool {
-    fn def(&self) -> ToolDef {
+    fn defination(&self) -> ToolDef {
         let params = ParamDef::new("object")
             .with_properties(vec![
                 (
@@ -260,40 +266,43 @@ impl ITool for GenerateMemoryShardTool {
         .with_strict(true)
     }
 
-    async fn exec(&mut self, args: &str) -> ToolResult {
+    async fn execute(&mut self, args: &str) -> ExecutionResult {
         let v: serde_json::Value = serde_json::from_str(args)
-            .map_err(|e| ToolError::args_schema(format!("Invalid JSON args: {e}")))?;
+            .map_err(|e| ExecutionError::args_schema(format!("Invalid JSON args: {e}")))?;
 
         let shard_name = v
             .get("shard_name")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| ToolError::args_schema("Missing required field 'shard_name'".into()))?;
+            .ok_or_else(|| {
+                ExecutionError::args_schema("Missing required field 'shard_name'".into())
+            })?;
 
         let display_name = v
             .get("display_name")
             .and_then(|v| v.as_str())
             .ok_or_else(|| {
-                ToolError::args_schema("Missing required field 'display_name'".into())
+                ExecutionError::args_schema("Missing required field 'display_name'".into())
             })?;
 
         let description = v
             .get("description")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| ToolError::args_schema("Missing required field 'description'".into()))?;
+            .ok_or_else(|| {
+                ExecutionError::args_schema("Missing required field 'description'".into())
+            })?;
 
         let tags = v
             .get("tags")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| ToolError::args_schema("Missing required field 'tags'".into()))?;
+            .ok_or_else(|| ExecutionError::args_schema("Missing required field 'tags'".into()))?;
 
-        let content = v
-            .get("content")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| ToolError::args_schema("Missing required field 'content'".into()))?;
+        let content = v.get("content").and_then(|v| v.as_str()).ok_or_else(|| {
+            ExecutionError::args_schema("Missing required field 'content'".into())
+        })?;
 
         // Validate content length against the 1024-character limit.
         if content.len() > 1024 {
-            return Err(ToolError::exec_fail(format!(
+            return Err(ExecutionError::exec_fail(format!(
                 "Content exceeds 1024 character limit (actual: {} characters). \
                  Please shorten the content and try again.",
                 content.len()
@@ -320,7 +329,7 @@ impl ITool for GenerateMemoryShardTool {
         // Create shard directory and write the file.
         let shard_dir = self.shards_dir.join(shard_name);
         std::fs::create_dir_all(&shard_dir).map_err(|e| {
-            ToolError::exec_fail(format!(
+            ExecutionError::exec_fail(format!(
                 "Failed to create shard directory '{}': {}",
                 shard_name, e
             ))
@@ -328,7 +337,7 @@ impl ITool for GenerateMemoryShardTool {
 
         let shard_file = shard_dir.join("shard.md");
         std::fs::write(&shard_file, &shard_content)
-            .map_err(|e| ToolError::exec_fail(format!("Failed to write shard file: {}", e)))?;
+            .map_err(|e| ExecutionError::exec_fail(format!("Failed to write shard file: {}", e)))?;
 
         Ok(format!(
             "Successfully created memory shard '{}' at memory/shards/{}/shard.md ({} characters)",
@@ -357,7 +366,7 @@ impl ModifyMemoryShardTool {
 
 #[async_trait::async_trait]
 impl ITool for ModifyMemoryShardTool {
-    fn def(&self) -> ToolDef {
+    fn defination(&self) -> ToolDef {
         let params = ParamDef::new("object")
             .with_properties(vec![
                 (
@@ -420,38 +429,40 @@ impl ITool for ModifyMemoryShardTool {
         .with_strict(true)
     }
 
-    async fn exec(&mut self, args: &str) -> ToolResult {
+    async fn execute(&mut self, args: &str) -> ExecutionResult {
         let v: serde_json::Value = serde_json::from_str(args)
-            .map_err(|e| ToolError::args_schema(format!("Invalid JSON args: {e}")))?;
+            .map_err(|e| ExecutionError::args_schema(format!("Invalid JSON args: {e}")))?;
 
         let shard_name = v
             .get("shard_name")
             .and_then(|v| v.as_str())
-            .ok_or_else(|| ToolError::args_schema("Missing required field 'shard_name'".into()))?;
+            .ok_or_else(|| {
+                ExecutionError::args_schema("Missing required field 'shard_name'".into())
+            })?;
 
         let start_line = v
             .get("start_line")
             .and_then(|v| v.as_u64())
-            .ok_or_else(|| ToolError::args_schema("Missing required field 'start_line'".into()))? as usize;
+            .ok_or_else(|| {
+                ExecutionError::args_schema("Missing required field 'start_line'".into())
+            })? as usize;
 
-        let end_line = v
-            .get("end_line")
-            .and_then(|v| v.as_u64())
-            .ok_or_else(|| ToolError::args_schema("Missing required field 'end_line'".into()))? as usize;
+        let end_line = v.get("end_line").and_then(|v| v.as_u64()).ok_or_else(|| {
+            ExecutionError::args_schema("Missing required field 'end_line'".into())
+        })? as usize;
 
-        let new_text = v
-            .get("new_text")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| ToolError::args_schema("Missing required field 'new_text'".into()))?;
+        let new_text = v.get("new_text").and_then(|v| v.as_str()).ok_or_else(|| {
+            ExecutionError::args_schema("Missing required field 'new_text'".into())
+        })?;
 
         let shard_file = self.shards_dir.join(shard_name).join("shard.md");
 
         let raw = std::fs::read_to_string(&shard_file).map_err(|e| {
-            ToolError::exec_fail(format!("Failed to read shard '{shard_name}': {e}"))
+            ExecutionError::exec_fail(format!("Failed to read shard '{shard_name}': {e}"))
         })?;
 
         let (meta, body) = parse_frontmatter(&raw).map_err(|e| {
-            ToolError::exec_fail(format!("Failed to parse shard '{shard_name}': {e}"))
+            ExecutionError::exec_fail(format!("Failed to parse shard '{shard_name}': {e}"))
         })?;
 
         // Trim leading whitespace from body (the blank lines between frontmatter and content).
@@ -474,18 +485,18 @@ impl ITool for ModifyMemoryShardTool {
         } else {
             // Replace range [start_line, end_line] (1-based, inclusive).
             if start_line == 0 || start_line > body_lines.len() + 1 {
-                return Err(ToolError::exec_fail(format!(
+                return Err(ExecutionError::exec_fail(format!(
                     "start_line {start_line} is out of range (body has {} lines)",
                     body_lines.len()
                 )));
             }
             if end_line < start_line {
-                return Err(ToolError::exec_fail(format!(
+                return Err(ExecutionError::exec_fail(format!(
                     "end_line {end_line} must be >= start_line {start_line}"
                 )));
             }
             if end_line > body_lines.len() {
-                return Err(ToolError::exec_fail(format!(
+                return Err(ExecutionError::exec_fail(format!(
                     "end_line {end_line} is out of range (body has {} lines)",
                     body_lines.len()
                 )));
@@ -507,7 +518,7 @@ impl ITool for ModifyMemoryShardTool {
 
         // Enforce 1024 character limit.
         if new_body.len() > 1024 {
-            return Err(ToolError::exec_fail(format!(
+            return Err(ExecutionError::exec_fail(format!(
                 "Modified body would be {} characters, exceeding the 1024 character limit. \
                  Please shorten the replacement and try again.",
                 new_body.len()
@@ -528,7 +539,7 @@ impl ITool for ModifyMemoryShardTool {
         );
 
         std::fs::write(&shard_file, &shard_content)
-            .map_err(|e| ToolError::exec_fail(format!("Failed to write shard file: {e}")))?;
+            .map_err(|e| ExecutionError::exec_fail(format!("Failed to write shard file: {e}")))?;
 
         let old_line_count = old_body.split('\n').count();
         let new_line_count = new_body.split('\n').count();
@@ -544,12 +555,14 @@ impl ITool for ModifyMemoryShardTool {
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
     use super::*;
 
     #[test]
     fn tool_definition_is_correct() {
         let tool = GenerateMemoryShardTool::new(PathBuf::from("/tmp"));
-        let def = tool.def();
+        let def = tool.defination();
 
         assert_eq!(def.name, "generate_memory_shard");
         assert_eq!(def.strict, Some(true));
@@ -577,7 +590,7 @@ mod tests {
 
         let mut tool = GenerateMemoryShardTool::new(dir.clone());
         let args = r#"{"shard_name":"test-topic","display_name":"Test Topic","description":"A test shard","tags":"test,example","content":"This is the shard body."}"#;
-        let result = tool.exec(args).await;
+        let result = tool.execute(args).await;
 
         assert!(result.is_ok(), "create should succeed: {:?}", result);
 
@@ -605,7 +618,7 @@ mod tests {
             r#"{{"shard_name":"big","display_name":"Big","description":"test","tags":"test","content":"{}"}}"#,
             long_content
         );
-        let result = tool.exec(&args).await;
+        let result = tool.execute(&args).await;
 
         assert!(result.is_err(), "should reject content over 1024 chars");
         let err = result.unwrap_err();
@@ -622,7 +635,7 @@ mod tests {
 
         let mut tool = GenerateMemoryShardTool::new(dir.clone());
 
-        let result = tool.exec(r#"{"shard_name":"test"}"#).await;
+        let result = tool.execute(r#"{"shard_name":"test"}"#).await;
         assert!(result.is_err(), "missing fields should be rejected");
 
         let _ = std::fs::remove_dir_all(&dir);
@@ -639,7 +652,7 @@ mod tests {
             r#"{{"shard_name":"exact","display_name":"Exact","description":"test","tags":"test","content":"{}"}}"#,
             exact_content
         );
-        let result = tool.exec(&args).await;
+        let result = tool.execute(&args).await;
 
         assert!(
             result.is_ok(),
@@ -652,16 +665,15 @@ mod tests {
 
     // -- ModifyMemoryShardTool tests --
 
-    fn create_test_shard(dir: &PathBuf, name: &str, body: &str) {
+    fn create_test_shard(dir: &Path, name: &str, body: &str) {
         let shard_dir = dir.join("shards").join(name);
         std::fs::create_dir_all(&shard_dir).unwrap();
-        let content = format!(
-            "---\nname: {name}\ndescription: test\ntags:\n  - test\n---\n\n{body}"
-        );
+        let content =
+            format!("---\nname: {name}\ndescription: test\ntags:\n  - test\n---\n\n{body}");
         std::fs::write(shard_dir.join("shard.md"), content).unwrap();
     }
 
-    fn read_shard_body(dir: &PathBuf, name: &str) -> String {
+    fn read_shard_body(dir: &Path, name: &str) -> String {
         let raw = std::fs::read_to_string(dir.join("shards").join(name).join("shard.md")).unwrap();
         let (_, body) = parse_frontmatter(&raw).unwrap();
         body.trim_start().to_string()
@@ -670,7 +682,7 @@ mod tests {
     #[test]
     fn modify_tool_definition_is_correct() {
         let tool = ModifyMemoryShardTool::new(PathBuf::from("/tmp"));
-        let def = tool.def();
+        let def = tool.defination();
 
         assert_eq!(def.name, "modify_memory_shard");
         assert_eq!(def.strict, Some(true));
@@ -688,7 +700,7 @@ mod tests {
 
         let mut tool = ModifyMemoryShardTool::new(dir.clone());
         let args = r#"{"shard_name":"test","start_line":2,"end_line":2,"new_text":"replaced"}"#;
-        let result = tool.exec(args).await;
+        let result = tool.execute(args).await;
 
         assert!(result.is_ok(), "modify should succeed: {:?}", result);
         let body = read_shard_body(&dir, "test");
@@ -705,7 +717,7 @@ mod tests {
 
         let mut tool = ModifyMemoryShardTool::new(dir.clone());
         let args = r#"{"shard_name":"test","start_line":2,"end_line":4,"new_text":"x\\ny"}"#;
-        let result = tool.exec(args).await;
+        let result = tool.execute(args).await;
 
         assert!(result.is_ok(), "modify range should succeed: {:?}", result);
         let body = read_shard_body(&dir, "test");
@@ -722,7 +734,7 @@ mod tests {
 
         let mut tool = ModifyMemoryShardTool::new(dir.clone());
         let args = r#"{"shard_name":"test","start_line":1,"end_line":0,"new_text":"line2"}"#;
-        let result = tool.exec(args).await;
+        let result = tool.execute(args).await;
 
         assert!(result.is_ok(), "append should succeed: {:?}", result);
         let body = read_shard_body(&dir, "test");
@@ -739,10 +751,9 @@ mod tests {
 
         let mut tool = ModifyMemoryShardTool::new(dir.clone());
         let long = "x".repeat(1025);
-        let args = format!(
-            r#"{{"shard_name":"test","start_line":1,"end_line":1,"new_text":"{long}"}}"#
-        );
-        let result = tool.exec(&args).await;
+        let args =
+            format!(r#"{{"shard_name":"test","start_line":1,"end_line":1,"new_text":"{long}"}}"#);
+        let result = tool.execute(&args).await;
 
         assert!(result.is_err(), "should reject overflow");
 
@@ -759,12 +770,12 @@ mod tests {
 
         // end_line < start_line
         let args = r#"{"shard_name":"test","start_line":2,"end_line":1,"new_text":"x"}"#;
-        let result = tool.exec(args).await;
+        let result = tool.execute(args).await;
         assert!(result.is_err());
 
         // start_line out of range
         let args = r#"{"shard_name":"test","start_line":10,"end_line":10,"new_text":"x"}"#;
-        let result = tool.exec(args).await;
+        let result = tool.execute(args).await;
         assert!(result.is_err());
 
         let _ = std::fs::remove_dir_all(&dir);

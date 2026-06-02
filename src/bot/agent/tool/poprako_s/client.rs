@@ -25,7 +25,7 @@ impl PrksClient {
     ) -> Result<String, String> {
         let payload = LoginArgs { qid, password };
         let envelope: HttpRes<LoginRes> = http_client
-            .post("auth/login", &payload, &[], None)
+            .post_path("auth/login", &payload, &[], None)
             .await
             .map_err(Self::map_http_error)?;
 
@@ -191,7 +191,7 @@ impl PrksClient {
     {
         let envelope: HttpRes<T> = self
             .http_client
-            .get_with_query(path, query, Some(&self.auth_token))
+            .get_path_with_query(path, query, Some(&self.auth_token))
             .await
             .map_err(Self::map_http_error)?;
 
@@ -336,7 +336,7 @@ mod tests {
             r#"{"code":200,"data":{"token":"tok-123"}}"#.to_string(),
         );
 
-        let http_client = HttpClient::new(Url::parse(&base_url).expect("valid base url"));
+        let http_client = HttpClient::new(Some(Url::parse(&base_url).expect("valid base url")));
         let token = PrksClient::login(&http_client, "bot-qid", "bot-pass")
             .await
             .expect("login should succeed");
@@ -352,7 +352,7 @@ mod tests {
             r#"{"code":400,"message":"bad credentials"}"#.to_string(),
         );
 
-        let http_client = HttpClient::new(Url::parse(&base_url).expect("valid base url"));
+        let http_client = HttpClient::new(Some(Url::parse(&base_url).expect("valid base url")));
         let err = PrksClient::login(&http_client, "bot-qid", "bad-pass")
             .await
             .expect_err("login should fail");
@@ -385,7 +385,7 @@ mod tests {
             r#"{"code":200,"data":[]}"#.to_string(),
         );
 
-        let http_client = HttpClient::new(Url::parse(&base_url).expect("valid base url"));
+        let http_client = HttpClient::new(Some(Url::parse(&base_url).expect("valid base url")));
         let client = PrksClient::new(http_client, "auth-tok".to_string());
 
         let comics = client

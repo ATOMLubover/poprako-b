@@ -1,15 +1,18 @@
-use crate::ai::agent::tool::result::ToolResult;
+use crate::ai::agent::tool::result::ExecutionResult;
 use crate::ai::resolver::tool::ToolDef;
 
 pub mod local;
+pub mod remote;
 
 /// ITool represents a tool that can be called by the agent. It should have a name,
 /// a description, and a function to execute with given arguments.
 #[async_trait::async_trait]
 pub trait ITool {
-    fn def(&self) -> ToolDef;
+    /// Returns the definition of the tool, including its name, description, and parameters.
+    fn defination(&self) -> ToolDef;
 
-    async fn exec(&mut self, args: &str) -> ToolResult;
+    /// Executes the tool with the given arguments, and returns the result as a string.
+    async fn execute(&mut self, args: &str) -> ExecutionResult;
 }
 
 /// DynTool is a type alias for a boxed dynamic ITool that is Send,
@@ -20,13 +23,13 @@ pub type DynTool = Box<dyn ITool + Send>;
 
 pub mod result {
     #[derive(Debug)]
-    pub enum ToolError {
+    pub enum ExecutionError {
         ArgsSchema { message: String },
         ExecFail { message: String },
         UserAbort,
     }
 
-    impl ToolError {
+    impl ExecutionError {
         pub fn args_schema(msg: String) -> Self {
             Self::ArgsSchema { message: msg }
         }
@@ -40,22 +43,19 @@ pub mod result {
         }
     }
 
+    pub type ExecutionResult = std::result::Result<String, ExecutionError>;
+
     #[derive(Debug)]
-    pub struct ToolOutput {
-        pub id: String,
+    pub struct CallOutput {
+        pub call_id: String,
         pub content: String,
     }
 
-    impl ToolOutput {
-        pub fn new(id: &str, content: String) -> Self {
-            Self {
-                id: id.to_string(),
-                content,
-            }
+    impl CallOutput {
+        pub fn new(call_id: String, content: String) -> Self {
+            Self { call_id, content }
         }
     }
 
-    pub type ToolResult = std::result::Result<String, ToolError>;
-
-    pub type DispatchResult = std::result::Result<ToolOutput, ToolError>;
+    pub type CallResult = std::result::Result<CallOutput, ExecutionError>;
 }

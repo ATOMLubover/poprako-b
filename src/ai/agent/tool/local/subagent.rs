@@ -7,7 +7,7 @@ use crate::ai::agent::openai::OpenAiAgentBuilder;
 use crate::ai::agent::tool::DynTool;
 use crate::ai::agent::tool::ITool;
 use crate::ai::agent::tool::local::fs::{ListFilesTool, ReadFileTool};
-use crate::ai::agent::tool::result::{ToolError, ToolResult};
+use crate::ai::agent::tool::result::{ExecutionError, ExecutionResult};
 use crate::ai::resolver::context::ContextBuilder;
 use crate::ai::resolver::openai::OpenAiResolver;
 use crate::ai::resolver::tool::{ParamDef, PropDef, ToolDef};
@@ -38,15 +38,17 @@ impl RunSubagentsTool {
 // ---- parsing -----------------------------------------------------------------
 
 impl RunSubagentsTool {
-    fn parse_args(&self, args: &str) -> Result<(String, String, Vec<Task>), ToolError> {
+    fn parse_args(&self, args: &str) -> Result<(String, String, Vec<Task>), ExecutionError> {
         let v: serde_json::Value = serde_json::from_str(args)
-            .map_err(|e| ToolError::args_schema(format!("Invalid JSON args: {e}")))?;
+            .map_err(|e| ExecutionError::args_schema(format!("Invalid JSON args: {e}")))?;
 
         let system_prompt = v
             .get("system_prompt")
             .and_then(|v| v.as_str())
             .filter(|s| !s.is_empty())
-            .ok_or_else(|| ToolError::args_schema("Missing required field 'system_prompt'".into()))?
+            .ok_or_else(|| {
+                ExecutionError::args_schema("Missing required field 'system_prompt'".into())
+            })?
             .to_string();
 
         let model = v
@@ -59,15 +61,15 @@ impl RunSubagentsTool {
         let tasks = v
             .get("tasks")
             .and_then(|v| v.as_array())
-            .ok_or_else(|| ToolError::args_schema("Missing required field 'tasks'".into()))?;
+            .ok_or_else(|| ExecutionError::args_schema("Missing required field 'tasks'".into()))?;
 
         if tasks.is_empty() {
-            return Err(ToolError::args_schema(
+            return Err(ExecutionError::args_schema(
                 "'tasks' array must not be empty".into(),
             ));
         }
         if tasks.len() > self.max_tasks {
-            return Err(ToolError::exec_fail(format!(
+            return Err(ExecutionError::exec_fail(format!(
                 "Too many tasks: {} (max {})",
                 tasks.len(),
                 self.max_tasks
@@ -83,13 +85,13 @@ impl RunSubagentsTool {
         Ok((model, system_prompt, parsed))
     }
 
-    fn parse_single_task(i: usize, t: &serde_json::Value) -> Result<Task, ToolError> {
+    fn parse_single_task(i: usize, t: &serde_json::Value) -> Result<Task, ExecutionError> {
         let id = t
             .get("id")
             .and_then(|v| v.as_str())
             .filter(|s| !s.is_empty())
             .ok_or_else(|| {
-                ToolError::args_schema(format!("Task {i}: missing or empty 'id' field"))
+                ExecutionError::args_schema(format!("Task {i}: missing or empty 'id' field"))
             })?
             .to_string();
 
@@ -98,7 +100,7 @@ impl RunSubagentsTool {
             .and_then(|v| v.as_str())
             .filter(|s| !s.is_empty())
             .ok_or_else(|| {
-                ToolError::args_schema(format!("Task '{id}': missing or empty 'prompt' field"))
+                ExecutionError::args_schema(format!("Task '{id}': missing or empty 'prompt' field"))
             })?
             .to_string();
 
@@ -213,7 +215,7 @@ async fn run_sub_agent(
 
 #[async_trait::async_trait]
 impl ITool for RunSubagentsTool {
-    fn def(&self) -> ToolDef {
+    fn defination(&self) -> ToolDef {
         let params = ParamDef::new("object")
             .with_properties(vec![
                 (
@@ -252,7 +254,7 @@ impl ITool for RunSubagentsTool {
         .with_strict(true)
     }
 
-    async fn exec(&mut self, args: &str) -> ToolResult {
+    async fn execute(&mut self, args: &str) -> ExecutionResult {
         let (model, system_prompt, tasks) = self.parse_args(args)?;
         let task_ids: Vec<String> = tasks.iter().map(|t| t.id.clone()).collect();
 
@@ -269,7 +271,7 @@ mod tests {
     #[test]
     fn tool_definition_is_correct() {
         let tool = RunSubagentsTool::new("deepseek-v4-flash".into(), 5, PathBuf::from("/tmp"));
-        let def = tool.def();
+        let def = tool.defination();
 
         assert_eq!(def.name, "run_subagents");
         assert_eq!(def.strict, Some(true));
@@ -286,7 +288,7 @@ mod tests {
     async fn reject_missing_tasks() {
         let mut tool = RunSubagentsTool::new("deepseek-v4-flash".into(), 5, PathBuf::from("/tmp"));
 
-        let result = tool.exec(r#"{"system_prompt":"test"}"#).await;
+        let result = tool.execute(r#"{"system_prompt":"test"}"#).await;
         assert!(result.is_err(), "missing tasks should be rejected");
         let err = format!("{:?}", result.unwrap_err());
         assert!(err.contains("tasks"), "error should mention tasks: {err}");
@@ -296,7 +298,7 @@ mod tests {
     async fn reject_empty_tasks() {
         let mut tool = RunSubagentsTool::new("deepseek-v4-flash".into(), 5, PathBuf::from("/tmp"));
 
-        let result = tool.exec(r#"{"system_prompt":"test","tasks":[]}"#).await;
+        let result = tool.execute(r#"{"system_prompt":"test","tasks":[]}"#).await;
         assert!(result.is_err(), "empty tasks should be rejected");
     }
 
@@ -305,7 +307,7 @@ mod tests {
         let mut tool = RunSubagentsTool::new("deepseek-v4-flash".into(), 3, PathBuf::from("/tmp"));
 
         let result = tool
-            .exec(r#"{"system_prompt":"x","tasks":[{"id":"a","prompt":"1"},{"id":"b","prompt":"2"},{"id":"c","prompt":"3"},{"id":"d","prompt":"4"}]}"#)
+            .execute(r#"{"system_prompt":"x","tasks":[{"id":"a","prompt":"1"},{"id":"b","prompt":"2"},{"id":"c","prompt":"3"},{"id":"d","prompt":"4"}]}"#)
             .await;
         assert!(result.is_err(), "too many tasks should be rejected");
         let err = format!("{:?}", result.unwrap_err());
@@ -318,19 +320,19 @@ mod tests {
 
         // Missing id
         let result = tool
-            .exec(r#"{"system_prompt":"x","tasks":[{"prompt":"hello"}]}"#)
+            .execute(r#"{"system_prompt":"x","tasks":[{"prompt":"hello"}]}"#)
             .await;
         assert!(result.is_err(), "missing id should be rejected");
 
         // Missing prompt
         let result = tool
-            .exec(r#"{"system_prompt":"x","tasks":[{"id":"a"}]}"#)
+            .execute(r#"{"system_prompt":"x","tasks":[{"id":"a"}]}"#)
             .await;
         assert!(result.is_err(), "missing prompt should be rejected");
 
         // Empty id
         let result = tool
-            .exec(r#"{"system_prompt":"x","tasks":[{"id":"","prompt":"hello"}]}"#)
+            .execute(r#"{"system_prompt":"x","tasks":[{"id":"","prompt":"hello"}]}"#)
             .await;
         assert!(result.is_err(), "empty id should be rejected");
     }
@@ -342,7 +344,7 @@ mod tests {
         let mut tool = RunSubagentsTool::new("deepseek-v4-flash".into(), 5, PathBuf::from("/tmp"));
 
         let result = tool
-            .exec(r#"{"system_prompt":"You are helpful.","model":"nonexistent","tasks":[{"id":"a","prompt":"Say hello."}]}"#)
+            .execute(r#"{"system_prompt":"You are helpful.","model":"nonexistent","tasks":[{"id":"a","prompt":"Say hello."}]}"#)
             .await;
 
         assert!(
@@ -367,7 +369,7 @@ mod tests {
         let mut tool = RunSubagentsTool::new("deepseek-v4-flash".into(), 5, PathBuf::from("/tmp"));
 
         let result = tool
-            .exec(
+            .execute(
                 r#"{"system_prompt":"You are a helpful assistant. Answer concisely.",
                     "tasks":[{"id":"greeting","prompt":"Reply with exactly: hello from sub-agent"}]}"#,
             )
@@ -403,7 +405,7 @@ mod tests {
         let mut tool = RunSubagentsTool::new("deepseek-v4-flash".into(), 5, PathBuf::from("/tmp"));
 
         let result = tool
-            .exec(
+            .execute(
                 r#"{"system_prompt":"You are a helpful assistant. Answer with just the word.",
                     "tasks":[
                       {"id":"alpha","prompt":"Which Greek letter comes after the first one? Reply with just the word."},

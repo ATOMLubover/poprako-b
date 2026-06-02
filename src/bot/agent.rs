@@ -10,6 +10,7 @@ use tool::build_tools;
 
 use crate::ai::agent::compact::sliding_window_compact;
 use crate::ai::agent::openai::{OpenAiAgent, OpenAiAgentBuilder};
+use crate::ai::agent::tool::remote::RemoteProxy;
 use crate::ai::resolver::context::ContextBuilder;
 use crate::ai::resolver::openai::OpenAiResolver;
 use crate::bot::agent::prompt::system_prompt;
@@ -34,6 +35,7 @@ impl BotAgent {
 
         let system_prompt = system_prompt()?;
         let tools = build_tools().await;
+        let remote_proxy = RemoteProxy::from_local_config().await.ok();
 
         let context = ContextBuilder::new(Self::MODEL_NAME)
             .messages(vec![ChatCompletionMessageParam::System {
@@ -44,6 +46,7 @@ impl BotAgent {
 
         let agent = OpenAiAgentBuilder::new(context, resolver)
             .tools(tools)
+            .remote_proxy(remote_proxy)
             .compact(sliding_window_compact)
             .build();
 

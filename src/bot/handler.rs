@@ -79,9 +79,7 @@ async fn bot_respond(state: &mut BotState, msg: &InputMessage) -> Vec<OutputMess
         .agent_mut()
         .try_respond(&nickname, &user_qid, &user_text)
         .await
-        .unwrap_or_else(|| {
-            "X﹏X 白杨子可能出现了点问题，无法回答这个问题哦".to_string()
-        });
+        .unwrap_or_else(|| "X﹏X 白杨子可能出现了点问题，无法回答这个问题哦".to_string());
 
     // Split by double newline into multiple messages.
     // The first message is a reply to the triggering message;
