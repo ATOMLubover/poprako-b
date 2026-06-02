@@ -46,8 +46,6 @@ const KEEPALIVE_MESSAGES: &[&str] = &[
 /// Spawn an independent keep-alive task so incoming events (including
 /// non-message heartbeat/meta events from NapCat) never cancel the timer.
 pub fn spawn_keepalive_task(conn: Arc<ReverseWsConnect>, self_id: i64) {
-    let keepalive_conn = conn.clone();
-
     tokio::spawn(async move {
         loop {
             let interval_secs = rand::thread_rng().gen_range(120..=300);
@@ -72,7 +70,7 @@ pub fn spawn_keepalive_task(conn: Arc<ReverseWsConnect>, self_id: i64) {
                     auto_escape: false,
                 });
 
-                match keepalive_conn.clone().call_api(payload).await {
+                match conn.clone().call_api(payload).await {
                     Ok(_) => {
                         tracing::info!("keep-alive {}/{} sent: {text}", i + 1, count);
                     }
