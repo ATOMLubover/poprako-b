@@ -181,7 +181,7 @@ impl PrksClient {
             ("includes".to_string(), "chapter.comic.creator".to_string()),
         ];
 
-        self.get_enveloped(&format!("assignments/users/{user_id}"), &query)
+        self.get_enveloped(&format!("assignments/users/{}", user_id), &query)
             .await
     }
 

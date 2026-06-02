@@ -40,7 +40,7 @@ impl RunSubagentsTool {
 impl RunSubagentsTool {
     fn parse_args(&self, args: &str) -> Result<(String, String, Vec<Task>), ExecutionError> {
         let v: serde_json::Value = serde_json::from_str(args)
-            .map_err(|e| ExecutionError::args_schema(format!("Invalid JSON args: {e}")))?;
+            .map_err(|e| ExecutionError::args_schema(format!("Invalid JSON args: {}", e)))?;
 
         let system_prompt = v
             .get("system_prompt")
@@ -91,7 +91,7 @@ impl RunSubagentsTool {
             .and_then(|v| v.as_str())
             .filter(|s| !s.is_empty())
             .ok_or_else(|| {
-                ExecutionError::args_schema(format!("Task {i}: missing or empty 'id' field"))
+                ExecutionError::args_schema(format!("Task {}: missing or empty 'id' field", i))
             })?
             .to_string();
 
@@ -100,7 +100,7 @@ impl RunSubagentsTool {
             .and_then(|v| v.as_str())
             .filter(|s| !s.is_empty())
             .ok_or_else(|| {
-                ExecutionError::args_schema(format!("Task '{id}': missing or empty 'prompt' field"))
+                ExecutionError::args_schema(format!("Task '{}': missing or empty 'prompt' field", id))
             })?
             .to_string();
 

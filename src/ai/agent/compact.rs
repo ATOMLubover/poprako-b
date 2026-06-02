@@ -7,12 +7,15 @@ where
 {
     // Use a MAX_MESSAGES larger than RESERVE_MESSAGES, in casae the agent
     // splits every time a message is pushed when the number of messages is above the limit.
-    const MAX_MESSAGES: usize = 40;
-    const RESERVE_MESSAGES: usize = 25;
+    const MAX_MESSAGES: usize = 80;
+    const RESERVE_MESSAGES: usize = 50;
 
-    let len = match cx.messages().len() {
-        len if len > MAX_MESSAGES => len,
-        _ => return,
+    let len = if let len = cx.messages().len()
+        && len > MAX_MESSAGES
+    {
+        len
+    } else {
+        return;
     };
 
     let mut messages = cx.take_messages();

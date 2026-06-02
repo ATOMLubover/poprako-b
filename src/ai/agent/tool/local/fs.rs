@@ -83,17 +83,17 @@ impl ITool for CreateFileTool {
         // Create parent directories if needed.
         if let Some(parent) = full_path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| {
-                ExecutionError::exec_fail(format!("Failed to create parent directories: {e}"))
+                ExecutionError::exec_fail(format!("Failed to create parent directories: {}", e))
             })?;
         }
 
         // Write the file.
         std::fs::write(&full_path, content)
-            .map_err(|e| ExecutionError::exec_fail(format!("Failed to write file: {e}")))?;
+            .map_err(|e| ExecutionError::exec_fail(format!("Failed to write file: {}", e)))?;
 
         self.created_files.push(full_path);
 
-        Ok(format!("Created file: {path}"))
+        Ok(format!("Created file: {}", path))
     }
 }
 
@@ -137,7 +137,7 @@ impl ITool for ListFilesTool {
 
     async fn execute(&mut self, args: &str) -> ExecutionResult {
         let v: serde_json::Value = serde_json::from_str(args)
-            .map_err(|e| ExecutionError::args_schema(format!("Invalid JSON args: {e}")))?;
+            .map_err(|e| ExecutionError::args_schema(format!("Invalid JSON args: {}", e)))?;
 
         let path = v.get("path").and_then(|v| v.as_str()).unwrap_or(".");
 
@@ -148,13 +148,13 @@ impl ITool for ListFilesTool {
         let full_path = self.base_dir.join(path);
 
         let entries = std::fs::read_dir(&full_path).map_err(|e| {
-            ExecutionError::exec_fail(format!("Failed to read directory '{}': {e}", path))
+            ExecutionError::exec_fail(format!("Failed to read directory '{}': {}", path, e))
         })?;
 
         let mut listing = Vec::new();
         for entry in entries {
             let entry = entry.map_err(|e| {
-                ExecutionError::exec_fail(format!("Failed to read entry in '{}': {e}", path))
+                ExecutionError::exec_fail(format!("Failed to read entry in '{}': {}", path, e))
             })?;
 
             let name = entry.file_name();
@@ -162,9 +162,9 @@ impl ITool for ListFilesTool {
 
             let is_dir = entry.file_type().map(|ft| ft.is_dir()).unwrap_or(false);
             if is_dir {
-                listing.push(format!("  {name}/ (directory)"));
+                listing.push(format!("  {}/ (directory)", name));
             } else {
-                listing.push(format!("  {name}"));
+                listing.push(format!("  {}", name));
             }
         }
 
@@ -227,7 +227,7 @@ impl ITool for ReadFileTool {
 
     async fn execute(&mut self, args: &str) -> ExecutionResult {
         let v: serde_json::Value = serde_json::from_str(args)
-            .map_err(|e| ExecutionError::args_schema(format!("Invalid JSON args: {e}")))?;
+            .map_err(|e| ExecutionError::args_schema(format!("Invalid JSON args: {}", e)))?;
 
         let path = v
             .get("path")
@@ -238,7 +238,7 @@ impl ITool for ReadFileTool {
         let full_path = self.base_dir.join(path);
 
         let content = std::fs::read_to_string(&full_path)
-            .map_err(|e| ExecutionError::exec_fail(format!("Failed to read file: {e}")))?;
+            .map_err(|e| ExecutionError::exec_fail(format!("Failed to read file: {}", e)))?;
 
         Ok(content)
     }

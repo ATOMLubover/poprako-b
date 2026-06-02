@@ -49,7 +49,7 @@ impl ReverseWebSockServerConfig {
         let port = match env::var("NAPCAT_REVERSE_WS_PORT") {
             Ok(value) => value
                 .parse::<u16>()
-                .with_context(|| format!("invalid NAPCAT_REVERSE_WS_PORT: {value}"))?,
+                .with_context(|| format!("invalid NAPCAT_REVERSE_WS_PORT: {}", value))?,
             Err(_) => 8081,
         };
         let suffix =

@@ -70,7 +70,7 @@ async fn bot_respond(state: &mut BotState, msg: &InputMessage) -> Vec<OutputMess
     let is_dev = msg.user_id().is_some_and(|qid| state.is_developer(qid));
 
     let user_text = if is_dev {
-        format!("[开发者] {user_text}")
+        format!("[开发者] {}", user_text)
     } else {
         user_text
     };

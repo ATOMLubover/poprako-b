@@ -67,7 +67,7 @@ pub fn spawn_spam_task(conn: Arc<ReverseWsConnect>, self_id: i64) {
                 return;
             }
         };
-        let image_file = format!("base64://{image_base64}");
+        let image_file = format!("base64://{}", image_base64);
 
         // Send boot image to self so the owner knows the task is alive.
         {

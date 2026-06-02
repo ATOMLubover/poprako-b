@@ -20,12 +20,12 @@ fn default_limit() -> i64 {
 
 fn parse_json_args<T: for<'de> Deserialize<'de>>(args: &str) -> Result<T, ExecutionError> {
     serde_json::from_str(args)
-        .map_err(|e| ExecutionError::args_schema(format!("invalid args json: {e}")))
+        .map_err(|e| ExecutionError::args_schema(format!("invalid args json: {}", e)))
 }
 
 fn pretty_json<T: Serialize>(v: &T) -> ExecutionResult {
     serde_json::to_string_pretty(v)
-        .map_err(|e| ExecutionError::exec_fail(format!("failed to serialize output: {e}")))
+        .map_err(|e| ExecutionError::exec_fail(format!("failed to serialize output: {}", e)))
 }
 
 fn workflow_phase_enum() -> Option<Vec<f64>> {

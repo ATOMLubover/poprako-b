@@ -87,7 +87,7 @@ impl ITool for WebSearchTool {
 impl WebSearchTool {
     fn parse_args(args: &str) -> Result<(String, u64), ExecutionError> {
         let v: serde_json::Value = serde_json::from_str(args)
-            .map_err(|e| ExecutionError::args_schema(format!("Invalid JSON args: {e}")))?;
+            .map_err(|e| ExecutionError::args_schema(format!("Invalid JSON args: {}", e)))?;
 
         let query = v
             .get("query")
@@ -128,7 +128,7 @@ impl WebSearchTool {
             .json(&body)
             .send()
             .await
-            .map_err(|e| ExecutionError::exec_fail(format!("Search request failed: {e}")))?;
+            .map_err(|e| ExecutionError::exec_fail(format!("Search request failed: {}", e)))?;
 
         let status = response.status();
         if !status.is_success() {
@@ -139,7 +139,7 @@ impl WebSearchTool {
         }
 
         let data: TavilyResponse = response.json().await.map_err(|e| {
-            ExecutionError::exec_fail(format!("Failed to parse search response: {e}"))
+            ExecutionError::exec_fail(format!("Failed to parse search response: {}", e))
         })?;
 
         Ok(data.results)
@@ -158,7 +158,7 @@ struct FormattedResult {
 fn truncate_content(content: &str) -> String {
     if content.chars().count() > MAX_CONTENT_CHARS {
         let truncated: String = content.chars().take(MAX_CONTENT_CHARS).collect();
-        format!("{truncated}…")
+        format!("{}…", truncated)
     } else {
         content.to_string()
     }
@@ -186,7 +186,7 @@ fn format_results(results: &[TavilyResult]) -> String {
             let header = format!("{}. **{}**", r.index, r.title);
             let url_line = format!("   URL: {}", r.url);
             let body = format!("   {}", r.snippet);
-            format!("{header}\n{url_line}\n{body}\n")
+            format!("{}\n{}\n{}\n", header, url_line, body)
         })
         .collect();
 

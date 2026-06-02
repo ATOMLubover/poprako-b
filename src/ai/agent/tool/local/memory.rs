@@ -32,7 +32,7 @@ fn parse_frontmatter(raw: &str) -> Result<(ShardMeta, String), String> {
         .ok_or_else(|| "missing YAML front-matter end `---`".to_string())?;
 
     let meta: ShardMeta = serde_yaml::from_str(yaml_block.trim())
-        .map_err(|e| format!("invalid YAML front-matter: {e}"))?;
+        .map_err(|e| format!("invalid YAML front-matter: {}", e))?;
 
     Ok((meta, body.to_string()))
 }
@@ -73,12 +73,12 @@ impl ITool for ListMemoryShardsTool {
         }
 
         let dir = std::fs::read_dir(&self.shards_dir).map_err(|e| {
-            ExecutionError::exec_fail(format!("Failed to read shards directory: {e}"))
+            ExecutionError::exec_fail(format!("Failed to read shards directory: {}", e))
         })?;
 
         for entry in dir {
             let entry = entry.map_err(|e| {
-                ExecutionError::exec_fail(format!("Failed to read directory entry: {e}"))
+                ExecutionError::exec_fail(format!("Failed to read directory entry: {}", e))
             })?;
 
             let path = entry.path();
@@ -99,7 +99,7 @@ impl ITool for ListMemoryShardsTool {
             })?;
 
             let (meta, _body) = parse_frontmatter(&raw).map_err(|e| {
-                ExecutionError::exec_fail(format!("Failed to parse {:?}: {e}", shard_file))
+                ExecutionError::exec_fail(format!("Failed to parse {:?}: {}", shard_file, e))
             })?;
 
             shards.push(format!(
@@ -160,7 +160,7 @@ impl ITool for RecallMemoryShardTool {
 
     async fn execute(&mut self, args: &str) -> ExecutionResult {
         let v: serde_json::Value = serde_json::from_str(args)
-            .map_err(|e| ExecutionError::args_schema(format!("Invalid JSON args: {e}")))?;
+            .map_err(|e| ExecutionError::args_schema(format!("Invalid JSON args: {}", e)))?;
 
         let shard_name = v
             .get("shard_name")
@@ -172,11 +172,11 @@ impl ITool for RecallMemoryShardTool {
         let shard_file = self.shards_dir.join(shard_name).join("shard.md");
 
         let raw = std::fs::read_to_string(&shard_file).map_err(|e| {
-            ExecutionError::exec_fail(format!("Failed to read shard '{shard_name}': {e}"))
+            ExecutionError::exec_fail(format!("Failed to read shard '{}': {}", shard_name, e))
         })?;
 
         let (_meta, body) = parse_frontmatter(&raw).map_err(|e| {
-            ExecutionError::exec_fail(format!("Failed to parse shard '{shard_name}': {e}"))
+            ExecutionError::exec_fail(format!("Failed to parse shard '{}': {}", shard_name, e))
         })?;
 
         Ok(body.trim_start().to_string())
@@ -268,7 +268,7 @@ impl ITool for GenerateMemoryShardTool {
 
     async fn execute(&mut self, args: &str) -> ExecutionResult {
         let v: serde_json::Value = serde_json::from_str(args)
-            .map_err(|e| ExecutionError::args_schema(format!("Invalid JSON args: {e}")))?;
+            .map_err(|e| ExecutionError::args_schema(format!("Invalid JSON args: {}", e)))?;
 
         let shard_name = v
             .get("shard_name")
@@ -431,7 +431,7 @@ impl ITool for ModifyMemoryShardTool {
 
     async fn execute(&mut self, args: &str) -> ExecutionResult {
         let v: serde_json::Value = serde_json::from_str(args)
-            .map_err(|e| ExecutionError::args_schema(format!("Invalid JSON args: {e}")))?;
+            .map_err(|e| ExecutionError::args_schema(format!("Invalid JSON args: {}", e)))?;
 
         let shard_name = v
             .get("shard_name")
@@ -458,11 +458,11 @@ impl ITool for ModifyMemoryShardTool {
         let shard_file = self.shards_dir.join(shard_name).join("shard.md");
 
         let raw = std::fs::read_to_string(&shard_file).map_err(|e| {
-            ExecutionError::exec_fail(format!("Failed to read shard '{shard_name}': {e}"))
+            ExecutionError::exec_fail(format!("Failed to read shard '{}': {}", shard_name, e))
         })?;
 
         let (meta, body) = parse_frontmatter(&raw).map_err(|e| {
-            ExecutionError::exec_fail(format!("Failed to parse shard '{shard_name}': {e}"))
+            ExecutionError::exec_fail(format!("Failed to parse shard '{}': {}", shard_name, e))
         })?;
 
         // Trim leading whitespace from body (the blank lines between frontmatter and content).
@@ -539,7 +539,7 @@ impl ITool for ModifyMemoryShardTool {
         );
 
         std::fs::write(&shard_file, &shard_content)
-            .map_err(|e| ExecutionError::exec_fail(format!("Failed to write shard file: {e}")))?;
+            .map_err(|e| ExecutionError::exec_fail(format!("Failed to write shard file: {}", e)))?;
 
         let old_line_count = old_body.split('\n').count();
         let new_line_count = new_body.split('\n').count();
@@ -669,7 +669,7 @@ mod tests {
         let shard_dir = dir.join("shards").join(name);
         std::fs::create_dir_all(&shard_dir).unwrap();
         let content =
-            format!("---\nname: {name}\ndescription: test\ntags:\n  - test\n---\n\n{body}");
+            format!("---\nname: {}\ndescription: test\ntags:\n  - test\n---\n\n{}", name, body);
         std::fs::write(shard_dir.join("shard.md"), content).unwrap();
     }
 

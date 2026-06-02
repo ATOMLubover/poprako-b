@@ -1,3 +1,4 @@
+mod group_history;
 mod poprako_s;
 
 use std::env;
@@ -21,6 +22,7 @@ use crate::http::HttpClient;
 
 pub async fn build_tools() -> Vec<DynTool> {
     let memory_dir = memory_dir();
+
     let mut tools: Vec<DynTool> = vec![
         Box::new(ListMemoryShardsTool::new(memory_dir.clone())),
         Box::new(RecallMemoryShardTool::new(memory_dir.clone())),
@@ -88,7 +90,7 @@ pub async fn build_tools() -> Vec<DynTool> {
 fn normalize_base_url(mut url: Url) -> Url {
     let path = url.path();
     if !path.ends_with('/') {
-        url.set_path(&format!("{path}/"));
+        url.set_path(&format!("{}/", path));
     }
     url
 }

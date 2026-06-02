@@ -79,7 +79,7 @@ impl BotAgent {
         let user_id_display = self
             .id_transform
             .get(user_qid)
-            .map(|s| format!("(poprako-s user_id: {s})"))
+            .map(|s| format!("(poprako-s user_id: {})", s))
             .unwrap_or_else(|| "(poprako-s user_id: -)".to_string());
 
         let full_text = format!("[{} {}] {}", user_nickname, user_id_display, user_text);
