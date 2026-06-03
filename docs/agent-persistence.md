@@ -14,7 +14,7 @@ QQ message routing, resolver clients, tool instances, or tool definitions.
 - Snapshot encoding and decoding for OpenAI chat messages.
 - PostgreSQL storage backed by `sqlx`.
 - Reversible SQL migrations created with `sqlx migrate add -r`.
-- Unit and integration tests for entities, codecs, manager behavior, and
+- Unit and integration tests for data objects, codecs, manager behavior, and
   PostgreSQL storage.
 
 ## Module Layout
@@ -22,10 +22,11 @@ QQ message routing, resolver clients, tool instances, or tool definitions.
 ```text
 src/ai/agent.rs
 src/ai/agent/persist.rs
-src/ai/agent/persist/entity.rs
+src/ai/agent/persist/data_object.rs
 src/ai/agent/persist/codec.rs
-src/ai/agent/persist/store.rs
-src/ai/agent/persist/postgres.rs
+src/ai/agent/persist/storage.rs
+src/ai/agent/persist/storage/rdb.rs
+src/ai/agent/persist/storage/rdb/entity.rs
 ```
 
 Responsibilities:
@@ -34,19 +35,24 @@ Responsibilities:
   - Owns `Agent`, `AgentBuilder`, and `AgentManager`.
   - `AgentManager` orchestrates session creation, checkpoint creation, checkpoint
     loading, checkpoint decoding, and fork operations.
-- `persist/entity.rs`
-  - Defines persistence-domain data types: `Session`, `Checkpoint`,
+- `persist/data_object.rs`
+  - Defines agent-layer persistence data objects: `Session`, `Checkpoint`,
     `ContextSnapshot`, `Message`, `ToolCall`, `Status`, `CheckpointKind`,
     `NewSession`, and `NewCheckpoint`.
+  - These are the types used by `AgentManager`, codecs, and `IStorage`.
 - `persist/codec.rs`
-  - Defines `MessageSnapshotCodec` and `ContextSnapshotCodec`.
+  - Defines `IMessageSnapshotCodec` and `IContextSnapshotCodec`.
   - Implements OpenAI message snapshot conversion via `OpenAiCodec`.
-- `persist/store.rs`
-  - Defines the storage trait `Store`.
-- `persist/postgres.rs`
-  - Implements `Store` with PostgreSQL in `Storage`.
+- `persist/storage.rs`
+  - Defines the storage trait `IStorage`.
+- `persist/storage/rdb.rs`
+  - Implements `IStorage` with PostgreSQL in `RdbStorage`.
   - Uses `sqlx::query!` with raw multiline SQL strings for compile-time checked
     SQL.
+- `persist/storage/rdb/entity.rs`
+  - Defines RDB-only storage entities and database value mapping.
+  - This module is private to the PostgreSQL implementation and is not exposed
+    to `AgentManager` or external callers.
 
 ## Stored Data
 
@@ -96,12 +102,14 @@ foreign key after both tables exist.
 
 ## AgentManager API
 
-`AgentManager<S, C>` is generic over:
+`AgentManager<S, M, C>` is generic over:
 
-- `S: Store`
-- `C: ContextSnapshotCodec<M>`
+- `S: IStorage`
+- `M: IMessage`
+- `C: IContextSnapshotCodec<M>`
 
-There is no default generic parameter.
+The codec type is constrained on the manager type itself; there is no
+unconstrained codec parameter and no default generic parameter.
 
 Implemented operations:
 
@@ -138,12 +146,13 @@ There is no merge implementation.
 
 ## PostgreSQL Storage
 
-`persist::Storage` is the PostgreSQL implementation.
+`persist::storage::IStorage` is the storage trait.
+`persist::storage::rdb::RdbStorage` is the PostgreSQL implementation.
 
 Construction:
 
 ```rust
-let storage = poprako_b_preview::ai::agent::persist::Storage::from_env().await?;
+let storage = poprako_b_preview::ai::agent::persist::storage::rdb::RdbStorage::from_env().await?;
 ```
 
 `from_env` reads:
@@ -163,8 +172,8 @@ The implementation uses:
 
 Implemented tests cover:
 
-- entity enum-to-database string mapping
-- entity JSON serialization
+- RDB entity enum-to-database string mapping
+- data object JSON serialization
 - context snapshot JSON round trip
 - OpenAI message codec round trip
 - assistant tool-call preservation

@@ -1,13 +1,15 @@
 use async_trait::async_trait;
 use uuid::Uuid;
 
-use crate::ai::agent::persist::entity::Checkpoint;
-use crate::ai::agent::persist::entity::NewCheckpoint;
-use crate::ai::agent::persist::entity::NewSession;
-use crate::ai::agent::persist::entity::Session;
+pub mod rdb;
+
+use crate::ai::agent::persist::data_object::Checkpoint;
+use crate::ai::agent::persist::data_object::NewCheckpoint;
+use crate::ai::agent::persist::data_object::NewSession;
+use crate::ai::agent::persist::data_object::Session;
 
 #[async_trait]
-pub trait Store: Send + Sync {
+pub trait IStorage {
     async fn create_session(&self, input: NewSession) -> anyhow::Result<Session>;
 
     async fn get_session(&self, session_id: Uuid) -> anyhow::Result<Session>;

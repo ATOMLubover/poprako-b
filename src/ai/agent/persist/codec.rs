@@ -3,25 +3,25 @@ use openai_oxide::types::chat::FunctionCall;
 use openai_oxide::types::chat::ToolCall as OpenAiToolCall;
 use openai_oxide::types::chat::UserContent;
 
-use crate::ai::agent::persist::entity::ContextSnapshot;
-use crate::ai::agent::persist::entity::Message;
+use crate::ai::agent::persist::data_object::ContextSnapshot;
+use crate::ai::agent::persist::data_object::Message;
 use crate::ai::resolver::context::Context;
 use crate::ai::resolver::context::ContextBuilder;
 use crate::ai::resolver::message::IMessage;
 use crate::ai::resolver::message::MessageRef;
 
-pub trait MessageSnapshotCodec<M>
+pub trait IMessageSnapshotCodec<M>
 where
-    M: IMessage + Clone + 'static,
+    M: IMessage + 'static,
 {
     fn encode_message(&self, message: &M) -> anyhow::Result<Message>;
 
     fn decode_message(&self, message: &Message) -> anyhow::Result<M>;
 }
 
-pub trait ContextSnapshotCodec<M>: MessageSnapshotCodec<M>
+pub trait IContextSnapshotCodec<M>: IMessageSnapshotCodec<M>
 where
-    M: IMessage + Clone + 'static,
+    M: IMessage + 'static,
 {
     fn encode_context(&self, context: &Context<M>) -> anyhow::Result<ContextSnapshot> {
         let messages = context
@@ -52,7 +52,7 @@ where
 #[derive(Debug, Clone, Copy, Default)]
 pub struct OpenAiCodec;
 
-impl MessageSnapshotCodec<ChatCompletionMessageParam> for OpenAiCodec {
+impl IMessageSnapshotCodec<ChatCompletionMessageParam> for OpenAiCodec {
     fn encode_message(&self, message: &ChatCompletionMessageParam) -> anyhow::Result<Message> {
         match message {
             ChatCompletionMessageParam::System { content, .. } => Ok(Message::System {
@@ -77,7 +77,7 @@ impl MessageSnapshotCodec<ChatCompletionMessageParam> for OpenAiCodec {
                 tool_calls: tool_calls.as_ref().map(|calls| {
                     calls
                         .iter()
-                        .map(|call| crate::ai::agent::persist::entity::ToolCall {
+                        .map(|call| crate::ai::agent::persist::data_object::ToolCall {
                             id: call.id.clone(),
                             name: call.function.name.clone(),
                             args: call.function.arguments.clone(),
@@ -143,10 +143,10 @@ impl MessageSnapshotCodec<ChatCompletionMessageParam> for OpenAiCodec {
     }
 }
 
-impl<M, C> ContextSnapshotCodec<M> for C
+impl<M, C> IContextSnapshotCodec<M> for C
 where
-    M: IMessage + Clone + 'static,
-    C: MessageSnapshotCodec<M>,
+    M: IMessage + 'static,
+    C: IMessageSnapshotCodec<M>,
 {
 }
 

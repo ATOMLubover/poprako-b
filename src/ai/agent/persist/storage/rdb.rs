@@ -1,27 +1,26 @@
 use async_trait::async_trait;
-use chrono::DateTime;
 use chrono::Utc;
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::types::Json;
 use uuid::Uuid;
 
-use crate::ai::agent::persist::entity::Checkpoint;
-use crate::ai::agent::persist::entity::CheckpointKind;
-use crate::ai::agent::persist::entity::ContextSnapshot;
-use crate::ai::agent::persist::entity::Message;
-use crate::ai::agent::persist::entity::NewCheckpoint;
-use crate::ai::agent::persist::entity::NewSession;
-use crate::ai::agent::persist::entity::Session;
-use crate::ai::agent::persist::entity::Status;
-use crate::ai::agent::persist::store::Store;
+mod entity;
+
+use crate::ai::agent::persist::data_object::Checkpoint;
+use crate::ai::agent::persist::data_object::CheckpointKind;
+use crate::ai::agent::persist::data_object::Message;
+use crate::ai::agent::persist::data_object::NewCheckpoint;
+use crate::ai::agent::persist::data_object::NewSession;
+use crate::ai::agent::persist::data_object::Session;
+use crate::ai::agent::persist::storage::IStorage;
 
 #[derive(Clone)]
-pub struct Storage {
+pub struct RdbStorage {
     pool: PgPool,
 }
 
-impl Storage {
+impl RdbStorage {
     pub fn new(pool: PgPool) -> Self {
         Self { pool }
     }
@@ -43,10 +42,10 @@ impl Storage {
 }
 
 #[async_trait]
-impl Store for Storage {
+impl IStorage for RdbStorage {
     async fn create_session(&self, input: NewSession) -> anyhow::Result<Session> {
-        let session = new_session(input);
-        let status = session.status.as_str();
+        let session = entity::Session::new(input);
+        let status = session.status.db_value();
         let row = sqlx::query!(
             r#"
             INSERT INTO agent_sessions (
@@ -82,7 +81,7 @@ impl Store for Storage {
         .fetch_one(&self.pool)
         .await?;
 
-        session_from_fields(
+        entity::Session::from_db(
             row.id,
             row.name,
             row.model,
@@ -92,6 +91,7 @@ impl Store for Storage {
             row.created_at,
             row.updated_at,
         )
+        .map(entity::Session::into_data_object)
     }
 
     async fn get_session(&self, session_id: Uuid) -> anyhow::Result<Session> {
@@ -114,7 +114,7 @@ impl Store for Storage {
         .fetch_one(&self.pool)
         .await?;
 
-        session_from_fields(
+        entity::Session::from_db(
             row.id,
             row.name,
             row.model,
@@ -124,11 +124,12 @@ impl Store for Storage {
             row.created_at,
             row.updated_at,
         )
+        .map(entity::Session::into_data_object)
     }
 
     async fn archive_session(&self, session_id: Uuid) -> anyhow::Result<Session> {
         let now = Utc::now();
-        let status = Status::Archived.as_str();
+        let status = entity::SessionStatus::Archived.db_value();
         let row = sqlx::query!(
             r#"
             UPDATE agent_sessions
@@ -153,7 +154,7 @@ impl Store for Storage {
         .fetch_one(&self.pool)
         .await?;
 
-        session_from_fields(
+        entity::Session::from_db(
             row.id,
             row.name,
             row.model,
@@ -163,11 +164,12 @@ impl Store for Storage {
             row.created_at,
             row.updated_at,
         )
+        .map(entity::Session::into_data_object)
     }
 
     async fn create_checkpoint(&self, input: NewCheckpoint) -> anyhow::Result<Checkpoint> {
-        let checkpoint = new_checkpoint(input);
-        let kind = checkpoint.kind.as_str();
+        let checkpoint = entity::Checkpoint::new(input);
+        let kind = checkpoint.kind.db_value();
         let messages = Json(checkpoint.snapshot.messages);
         let row = sqlx::query!(
             r#"
@@ -201,7 +203,7 @@ impl Store for Storage {
         .fetch_one(&self.pool)
         .await?;
 
-        checkpoint_from_fields(
+        entity::Checkpoint::from_db(
             row.id,
             row.session_id,
             row.run_id,
@@ -210,6 +212,7 @@ impl Store for Storage {
             row.messages,
             row.created_at,
         )
+        .map(entity::Checkpoint::into_data_object)
     }
 
     async fn get_checkpoint(&self, checkpoint_id: Uuid) -> anyhow::Result<Checkpoint> {
@@ -231,7 +234,7 @@ impl Store for Storage {
         .fetch_one(&self.pool)
         .await?;
 
-        checkpoint_from_fields(
+        entity::Checkpoint::from_db(
             row.id,
             row.session_id,
             row.run_id,
@@ -240,6 +243,7 @@ impl Store for Storage {
             row.messages,
             row.created_at,
         )
+        .map(entity::Checkpoint::into_data_object)
     }
 
     async fn list_checkpoints(&self, session_id: Uuid) -> anyhow::Result<Vec<Checkpoint>> {
@@ -264,7 +268,7 @@ impl Store for Storage {
 
         rows.into_iter()
             .map(|row| {
-                checkpoint_from_fields(
+                entity::Checkpoint::from_db(
                     row.id,
                     row.session_id,
                     row.run_id,
@@ -273,6 +277,7 @@ impl Store for Storage {
                     row.messages,
                     row.created_at,
                 )
+                .map(entity::Checkpoint::into_data_object)
             })
             .collect()
     }
@@ -302,7 +307,7 @@ impl Store for Storage {
         .fetch_one(&mut *tx)
         .await?;
 
-        let parent_checkpoint = checkpoint_from_fields(
+        let parent_checkpoint = entity::Checkpoint::from_db(
             parent_row.id,
             parent_row.session_id,
             parent_row.run_id,
@@ -310,15 +315,16 @@ impl Store for Storage {
             parent_row.model,
             parent_row.messages,
             parent_row.created_at,
-        )?;
+        )?
+        .into_data_object();
 
-        let session = new_session(NewSession {
+        let session = entity::Session::new(NewSession {
             name,
             model: parent_checkpoint.snapshot.model.clone(),
             parent_session_id: Some(parent_checkpoint.session_id),
             parent_checkpoint_id: Some(parent_checkpoint.id),
         });
-        let status = session.status.as_str();
+        let status = session.status.db_value();
         let session_row = sqlx::query!(
             r#"
             INSERT INTO agent_sessions (
@@ -353,7 +359,7 @@ impl Store for Storage {
         )
         .fetch_one(&mut *tx)
         .await?;
-        let session = session_from_fields(
+        let session = entity::Session::from_db(
             session_row.id,
             session_row.name,
             session_row.model,
@@ -362,15 +368,16 @@ impl Store for Storage {
             session_row.parent_checkpoint_id,
             session_row.created_at,
             session_row.updated_at,
-        )?;
+        )?
+        .into_data_object();
 
-        let checkpoint = new_checkpoint(NewCheckpoint {
+        let checkpoint = entity::Checkpoint::new(NewCheckpoint {
             session_id: session.id,
             run_id: None,
             kind: CheckpointKind::Fork,
             snapshot: parent_checkpoint.snapshot,
         });
-        let kind = checkpoint.kind.as_str();
+        let kind = checkpoint.kind.db_value();
         let messages = Json(checkpoint.snapshot.messages);
         let checkpoint_row = sqlx::query!(
             r#"
@@ -403,7 +410,7 @@ impl Store for Storage {
         )
         .fetch_one(&mut *tx)
         .await?;
-        let checkpoint = checkpoint_from_fields(
+        let checkpoint = entity::Checkpoint::from_db(
             checkpoint_row.id,
             checkpoint_row.session_id,
             checkpoint_row.run_id,
@@ -411,7 +418,8 @@ impl Store for Storage {
             checkpoint_row.model,
             checkpoint_row.messages,
             checkpoint_row.created_at,
-        )?;
+        )?
+        .into_data_object();
 
         tx.commit().await?;
 
@@ -419,78 +427,12 @@ impl Store for Storage {
     }
 }
 
-fn new_session(input: NewSession) -> Session {
-    let now = Utc::now();
-    Session {
-        id: Uuid::new_v4(),
-        name: input.name,
-        model: input.model,
-        status: Status::Active,
-        parent_session_id: input.parent_session_id,
-        parent_checkpoint_id: input.parent_checkpoint_id,
-        created_at: now,
-        updated_at: now,
-    }
-}
-
-fn new_checkpoint(input: NewCheckpoint) -> Checkpoint {
-    Checkpoint {
-        id: Uuid::new_v4(),
-        session_id: input.session_id,
-        run_id: input.run_id,
-        kind: input.kind,
-        snapshot: input.snapshot,
-        created_at: Utc::now(),
-    }
-}
-
-fn session_from_fields(
-    id: Uuid,
-    name: Option<String>,
-    model: String,
-    status: String,
-    parent_session_id: Option<Uuid>,
-    parent_checkpoint_id: Option<Uuid>,
-    created_at: DateTime<Utc>,
-    updated_at: DateTime<Utc>,
-) -> anyhow::Result<Session> {
-    Ok(Session {
-        id,
-        name,
-        model,
-        status: Status::try_from(status.as_str())?,
-        parent_session_id,
-        parent_checkpoint_id,
-        created_at,
-        updated_at,
-    })
-}
-
-fn checkpoint_from_fields(
-    id: Uuid,
-    session_id: Uuid,
-    run_id: Option<Uuid>,
-    kind: String,
-    model: String,
-    messages: Json<Vec<Message>>,
-    created_at: DateTime<Utc>,
-) -> anyhow::Result<Checkpoint> {
-    Ok(Checkpoint {
-        id,
-        session_id,
-        run_id,
-        kind: CheckpointKind::try_from(kind.as_str())?,
-        snapshot: ContextSnapshot {
-            model,
-            messages: messages.0,
-        },
-        created_at,
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use crate::ai::agent::persist::data_object::ContextSnapshot;
+    use crate::ai::agent::persist::data_object::Status;
 
     fn snapshot(model: &str) -> ContextSnapshot {
         ContextSnapshot {
@@ -505,7 +447,7 @@ mod tests {
                 Message::Assistant {
                     content: Some("calling".to_string()),
                     refusal: None,
-                    tool_calls: Some(vec![crate::ai::agent::persist::entity::ToolCall {
+                    tool_calls: Some(vec![crate::ai::agent::persist::data_object::ToolCall {
                         id: "call_1".to_string(),
                         name: "lookup".to_string(),
                         args: "{\"q\":\"poprako\"}".to_string(),
@@ -519,12 +461,14 @@ mod tests {
         }
     }
 
-    async fn storage() -> Storage {
+    async fn storage() -> RdbStorage {
         dotenvy::dotenv().ok();
-        Storage::from_env().await.expect("storage should connect")
+        RdbStorage::from_env()
+            .await
+            .expect("storage should connect")
     }
 
-    async fn cleanup(storage: &Storage, prefix: &str) {
+    async fn cleanup(storage: &RdbStorage, prefix: &str) {
         let pattern = format!("{}%", prefix);
         sqlx::query!(
             r#"

@@ -14,7 +14,7 @@ use crate::ai::resolver::result::ResolveResult;
 
 #[async_trait::async_trait]
 pub trait IResolver {
-    type Message: IMessage + Clone + 'static;
+    type Message: IMessage + 'static;
 
     async fn resolve(
         &mut self,

@@ -23,27 +23,6 @@ pub enum Status {
     Archived,
 }
 
-impl Status {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::Active => "active",
-            Self::Archived => "archived",
-        }
-    }
-}
-
-impl TryFrom<&str> for Status {
-    type Error = anyhow::Error;
-
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        match value {
-            "active" => Ok(Self::Active),
-            "archived" => Ok(Self::Archived),
-            other => Err(anyhow::anyhow!("unknown session status: {}", other)),
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Checkpoint {
     pub id: Uuid,
@@ -60,29 +39,6 @@ pub enum CheckpointKind {
     BeforeRun,
     AfterRun,
     Fork,
-}
-
-impl CheckpointKind {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::BeforeRun => "before_run",
-            Self::AfterRun => "after_run",
-            Self::Fork => "fork",
-        }
-    }
-}
-
-impl TryFrom<&str> for CheckpointKind {
-    type Error = anyhow::Error;
-
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        match value {
-            "before_run" => Ok(Self::BeforeRun),
-            "after_run" => Ok(Self::AfterRun),
-            "fork" => Ok(Self::Fork),
-            other => Err(anyhow::anyhow!("unknown checkpoint kind: {}", other)),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -137,35 +93,6 @@ pub struct NewCheckpoint {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn status_maps_to_database_value() {
-        assert_eq!(Status::Active.as_str(), "active");
-        assert_eq!(Status::Archived.as_str(), "archived");
-        assert_eq!(Status::try_from("active").unwrap(), Status::Active);
-        assert_eq!(Status::try_from("archived").unwrap(), Status::Archived);
-        assert!(Status::try_from("deleted").is_err());
-    }
-
-    #[test]
-    fn checkpoint_kind_maps_to_database_value() {
-        assert_eq!(CheckpointKind::BeforeRun.as_str(), "before_run");
-        assert_eq!(CheckpointKind::AfterRun.as_str(), "after_run");
-        assert_eq!(CheckpointKind::Fork.as_str(), "fork");
-        assert_eq!(
-            CheckpointKind::try_from("before_run").unwrap(),
-            CheckpointKind::BeforeRun
-        );
-        assert_eq!(
-            CheckpointKind::try_from("after_run").unwrap(),
-            CheckpointKind::AfterRun
-        );
-        assert_eq!(
-            CheckpointKind::try_from("fork").unwrap(),
-            CheckpointKind::Fork
-        );
-        assert!(CheckpointKind::try_from("snapshot").is_err());
-    }
 
     #[test]
     fn message_serializes_with_role_tag() {
