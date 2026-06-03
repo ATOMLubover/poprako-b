@@ -100,7 +100,10 @@ impl RunSubagentsTool {
             .and_then(|v| v.as_str())
             .filter(|s| !s.is_empty())
             .ok_or_else(|| {
-                ExecutionError::args_schema(format!("Task '{}': missing or empty 'prompt' field", id))
+                ExecutionError::args_schema(format!(
+                    "Task '{}': missing or empty 'prompt' field",
+                    id
+                ))
             })?
             .to_string();
 

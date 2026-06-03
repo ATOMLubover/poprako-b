@@ -668,8 +668,10 @@ mod tests {
     fn create_test_shard(dir: &Path, name: &str, body: &str) {
         let shard_dir = dir.join("shards").join(name);
         std::fs::create_dir_all(&shard_dir).unwrap();
-        let content =
-            format!("---\nname: {}\ndescription: test\ntags:\n  - test\n---\n\n{}", name, body);
+        let content = format!(
+            "---\nname: {}\ndescription: test\ntags:\n  - test\n---\n\n{}",
+            name, body
+        );
         std::fs::write(shard_dir.join("shard.md"), content).unwrap();
     }
 

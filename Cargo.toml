@@ -17,6 +17,7 @@ tokio = { version = "1.52.3", features = ["macros", "rt-multi-thread"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "fmt", "time"] }
 tracing-appender = "0.2"
+time = { version = "0.3", features = ["local-offset"] }
 chrono = { version = "0.4", features = ["clock"] }
 cron = "0.15"
 rand = "0.8.5"
