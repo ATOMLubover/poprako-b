@@ -6,7 +6,7 @@ use crate::ai::resolver::tool::ToolDef;
 /// new messages and tools as needed.
 pub struct Context<M>
 where
-    M: IMessage + 'static,
+    M: IMessage + Clone + 'static,
 {
     model: String,
     messages: Vec<M>,
@@ -15,7 +15,7 @@ where
 
 impl<M> Context<M>
 where
-    M: IMessage + 'static,
+    M: IMessage + Clone + 'static,
 {
     pub fn new(model: String) -> Self {
         Self {
@@ -60,7 +60,7 @@ where
 
 pub struct ContextBuilder<M>
 where
-    M: IMessage + 'static,
+    M: IMessage + Clone + 'static,
 {
     model: String,
     messages: Vec<M>,
@@ -69,7 +69,7 @@ where
 
 impl<M> ContextBuilder<M>
 where
-    M: IMessage + 'static,
+    M: IMessage + Clone + 'static,
 {
     pub fn new(model: impl Into<String>) -> Self {
         Self {

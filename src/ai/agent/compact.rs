@@ -3,7 +3,7 @@ use crate::ai::resolver::message::{IMessage, MessageRole};
 
 pub fn sliding_window_compact<M>(cx: &mut Context<M>)
 where
-    M: IMessage + 'static,
+    M: IMessage + Clone + 'static,
 {
     // Use a MAX_MESSAGES larger than RESERVE_MESSAGES, in casae the agent
     // splits every time a message is pushed when the number of messages is above the limit.
