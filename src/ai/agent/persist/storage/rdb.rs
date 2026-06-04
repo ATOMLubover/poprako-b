@@ -20,6 +20,7 @@ use crate::ai::agent::persist::data_object::ContextSnapshot;
 use crate::ai::agent::persist::data_object::Message;
 use crate::ai::agent::persist::data_object::NewCheckpoint;
 use crate::ai::agent::persist::data_object::NewSession;
+use crate::ai::agent::persist::data_object::PersistDiagnostics;
 use crate::ai::agent::persist::data_object::Session;
 use crate::ai::agent::persist::storage::IStorage;
 
@@ -332,6 +333,41 @@ impl IStorage for RdbStorage {
         .map(SessionEntity::into_data_object)
     }
 
+    async fn list_sessions(&self) -> anyhow::Result<Vec<Session>> {
+        let rows = sqlx::query!(
+            r#"
+            SELECT
+                id,
+                name,
+                model,
+                status,
+                forked_from_checkpoint_id,
+                created_at,
+                updated_at
+            FROM agent_sessions
+            WHERE status = 'active'
+            ORDER BY updated_at DESC, created_at DESC, id DESC
+            "#
+        )
+        .fetch_all(&self.pool)
+        .await?;
+
+        rows.into_iter()
+            .map(|row| {
+                SessionEntity::from_db(
+                    row.id,
+                    row.name,
+                    row.model,
+                    row.status,
+                    row.forked_from_checkpoint_id,
+                    row.created_at,
+                    row.updated_at,
+                )
+                .map(SessionEntity::into_data_object)
+            })
+            .collect()
+    }
+
     async fn archive_session(&self, session_id: Uuid) -> anyhow::Result<Session> {
         let now = Utc::now();
         let status = SessionStatus::Archived.db_value();
@@ -552,6 +588,42 @@ impl IStorage for RdbStorage {
         })
     }
 
+    async fn checkpoint_local_ref_count(&self, checkpoint_id: Uuid) -> anyhow::Result<i64> {
+        let row = sqlx::query!(
+            r#"
+            SELECT COUNT(*) AS "count!"
+            FROM agent_checkpoint_messages
+            WHERE checkpoint_id = $1
+            "#,
+            checkpoint_id,
+        )
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(row.count)
+    }
+
+    async fn persist_diagnostics(&self) -> anyhow::Result<PersistDiagnostics> {
+        let row = sqlx::query!(
+            r#"
+            SELECT
+                (SELECT COUNT(*) FROM agent_sessions WHERE status = 'active') AS "session_count!",
+                (SELECT COUNT(*) FROM agent_checkpoints) AS "checkpoint_count!",
+                (SELECT COUNT(*) FROM agent_messages) AS "message_count!",
+                (SELECT COUNT(*) FROM agent_checkpoint_messages) AS "checkpoint_local_ref_count!"
+            "#
+        )
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(PersistDiagnostics {
+            session_count: row.session_count,
+            checkpoint_count: row.checkpoint_count,
+            message_count: row.message_count,
+            checkpoint_local_ref_count: row.checkpoint_local_ref_count,
+        })
+    }
+
     async fn fork_session_from_checkpoint(
         &self,
         parent_checkpoint_id: Uuid,
@@ -764,6 +836,68 @@ mod tests {
         assert_eq!(loaded.status, Status::Active);
         assert_eq!(archived.status, Status::Archived);
         assert!(archived.updated_at >= archived.created_at);
+
+        cleanup(&storage, &prefix).await;
+    }
+
+    #[tokio::test]
+    async fn list_sessions_returns_active_sessions_by_updated_at_desc() {
+        let storage = storage().await;
+        let prefix = format!("test-list-session-{}-", Uuid::new_v4());
+        cleanup(&storage, &prefix).await;
+
+        let older = storage
+            .create_session(NewSession {
+                name: Some(format!("{}older", prefix)),
+                model: "deepseek-v4-flash".to_string(),
+                forked_from_checkpoint_id: None,
+            })
+            .await
+            .unwrap();
+        let newer = storage
+            .create_session(NewSession {
+                name: Some(format!("{}newer", prefix)),
+                model: "deepseek-v4-flash".to_string(),
+                forked_from_checkpoint_id: None,
+            })
+            .await
+            .unwrap();
+        let archived = storage
+            .create_session(NewSession {
+                name: Some(format!("{}archived", prefix)),
+                model: "deepseek-v4-flash".to_string(),
+                forked_from_checkpoint_id: None,
+            })
+            .await
+            .unwrap();
+        storage.archive_session(archived.id).await.unwrap();
+
+        sqlx::query!(
+            r#"
+            UPDATE agent_sessions
+            SET updated_at = NOW() + INTERVAL '1 hour'
+            WHERE id = $1
+            "#,
+            older.id,
+        )
+        .execute(storage.pool())
+        .await
+        .unwrap();
+
+        let sessions = storage.list_sessions().await.unwrap();
+        let listed: Vec<Uuid> = sessions
+            .iter()
+            .filter(|session| {
+                session
+                    .name
+                    .as_deref()
+                    .map(|name| name.starts_with(&prefix))
+                    .unwrap_or(false)
+            })
+            .map(|session| session.id)
+            .collect();
+
+        assert_eq!(listed, vec![older.id, newer.id]);
 
         cleanup(&storage, &prefix).await;
     }
@@ -1066,6 +1200,13 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(ref_count, 2); // only the 2 new messages
+        assert_eq!(
+            storage
+                .checkpoint_local_ref_count(second.id)
+                .await
+                .unwrap(),
+            2
+        );
 
         cleanup(&storage, &prefix).await;
     }

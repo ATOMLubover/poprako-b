@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Chatbox Persist Demo</title>
+    <link rel="stylesheet" href="/style.css" />
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  </head>
+  <body>
+    <main class="app">
+      <aside class="sessions">
+        <div class="panel-head">
+          <h1 class="brand">Chatbox</h1>
+          <button id="new-session" type="button" class="icon-btn" aria-label="New Session">
+            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          </button>
+        </div>
+        <div id="session-list" class="session-list"></div>
+      </aside>
+
+      <section class="chat">
+        <div class="statusbar" style="display: none;">
+          <span id="active-session"></span>
+          <span id="persist-debug"></span>
+        </div>
+        <div id="messages" class="messages"></div>
+        <form id="message-form" class="composer">
+          <textarea id="message-input" rows="1" placeholder="Type a message..."></textarea>
+          <button type="submit" class="icon-btn send-btn" aria-label="Send">
+            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+          </button>
+        </form>
+      </section>
+    </main>
+    <div style="display:none">
+      <div id="checkpoint-list"></div>
+      <div id="context-count"></div>
+      <pre id="context-view"></pre>
+      <button id="refresh" type="button"></button>
+    </div>
+    <script src="/app.js"></script>
+  </body>
+</html>
