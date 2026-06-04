@@ -58,7 +58,9 @@ impl RemoteTool {
         let response: RemoteToolExecutionResponse = client
             .post(self.call_url.clone(), &payload, &[], None)
             .await
-            .map_err(|e| ExecutionError::exec_fail(format!("remote tool request failed: {e:?}")))?;
+            .map_err(|e| {
+                ExecutionError::exec_fail(format!("remote tool request failed: {:?}", e))
+            })?;
 
         match response {
             RemoteToolExecutionResponse::Success { output } => Ok(output),

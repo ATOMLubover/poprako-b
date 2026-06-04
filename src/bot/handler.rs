@@ -4,6 +4,7 @@ use rand::Rng;
 
 use crate::bot::message::{InputMessage, OutputMessage};
 use crate::bot::state::BotState;
+use crate::bot::value_object::{ChatMessage, ChatMessageMeta};
 
 pub async fn handle_group_message(state: &mut BotState, msg: &InputMessage) -> Vec<OutputMessage> {
     tracing::info!(
@@ -47,12 +48,13 @@ fn repeat(state: &mut BotState, msg: &InputMessage) -> Vec<OutputMessage> {
         return Vec::new();
     }
 
-    // 80% chance to repeat.
-    if !rand::thread_rng().gen_ratio(4, 5) {
+    // 50% chance to repeat.
+    if !rand::thread_rng().gen_ratio(1, 2) {
         return Vec::new();
     }
 
     state.set_last_repeat(raw_text.to_string());
+
     tracing::info!("repeating '{}'", raw_text);
 
     vec![OutputMessage::new(false, InputMessage::text(raw_text))]
@@ -64,20 +66,30 @@ async fn bot_respond(state: &mut BotState, msg: &InputMessage) -> Vec<OutputMess
         None => return Vec::new(),
     };
 
-    let nickname = msg.nickname().unwrap_or_default().to_string();
-    let user_qid = msg.user_id().map(|id| id.to_string()).unwrap_or_default();
-
     let is_dev = msg.user_id().is_some_and(|qid| state.is_developer(qid));
 
     let user_text = if is_dev {
-        format!("[开发者] {user_text}")
+        format!("[开发者] {}", user_text)
     } else {
         user_text
     };
 
+    let chat_message = ChatMessage::new(
+        ChatMessageMeta::new(
+            msg.group_id().unwrap_or_default(),
+            "",
+            msg.user_id().unwrap_or_default(),
+            msg.nickname().unwrap_or_default(),
+            msg.group_nickname().map(str::to_string),
+            None,
+            msg.sent_at().unwrap_or_else(current_local_time),
+        ),
+        user_text,
+    );
+
     let text = state
         .agent_mut()
-        .try_respond(&nickname, &user_qid, &user_text)
+        .try_respond(chat_message)
         .await
         .unwrap_or_else(|| "X﹏X 白杨子可能出现了点问题，无法回答这个问题哦".to_string());
 
@@ -136,4 +148,9 @@ fn try_extract_at(msg: &InputMessage, self_id: i64) -> Option<String> {
 fn try_extract_prk(msg: &InputMessage) -> Option<String> {
     let text = msg.raw_text().strip_prefix("/prk")?.trim().to_string();
     if text.is_empty() { None } else { Some(text) }
+}
+
+fn current_local_time() -> time::OffsetDateTime {
+    let local_offset = time::UtcOffset::current_local_offset().unwrap_or(time::UtcOffset::UTC);
+    time::OffsetDateTime::now_utc().to_offset(local_offset)
 }

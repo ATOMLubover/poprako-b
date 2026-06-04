@@ -17,10 +17,14 @@ tokio = { version = "1.52.3", features = ["macros", "rt-multi-thread"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter", "fmt", "time"] }
 tracing-appender = "0.2"
-chrono = { version = "0.4", features = ["clock"] }
+time = { version = "0.3", features = ["local-offset"] }
+chrono = { version = "0.4", features = ["clock", "serde"] }
 cron = "0.15"
 rand = "0.8.5"
 url = { version = "2.5.8", features = ["serde"] }
+sqlx = { version = "0.8.6", features = ["runtime-tokio", "postgres", "uuid", "chrono", "json"] }
+uuid = { version = "1.19.0", features = ["v4", "serde"] }
+sha2 = "0.10"
 
 [dev-dependencies]
 axum = "0.8.7"

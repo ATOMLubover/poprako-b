@@ -56,7 +56,7 @@ impl HttpClient {
 
         let mut req = self.reqwest.get(url);
         if let Some(token) = bearer_token {
-            req = req.header(AUTHORIZATION, format!("Bearer {token}"));
+            req = req.header(AUTHORIZATION, format!("Bearer {}", token));
         }
 
         let response = req.send().await?;
@@ -108,7 +108,7 @@ impl HttpClient {
         let mut headers = HeaderMap::new();
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
         if let Some(token) = bearer_token {
-            let value = HeaderValue::from_str(&format!("Bearer {token}"))
+            let value = HeaderValue::from_str(&format!("Bearer {}", token))
                 .map_err(|e| result::HttpError::Unknown(e.to_string()))?;
             headers.insert(AUTHORIZATION, value);
         }
