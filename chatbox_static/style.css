@@ -1,0 +1,347 @@
+:root {
+  color-scheme: light;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background: #ffffff;
+  color: #1a1a1a;
+  --bg-sidebar: #fafafa;
+  --bg-hover: #f3f3f4;
+  --bg-active: #ebebed;
+  --border: #e8e8e8;
+  --accent: #111111;
+  --text-muted: #999;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  height: 100vh;
+  overflow: hidden;
+}
+
+button,
+textarea {
+  font: inherit;
+  outline: none;
+}
+
+/* ── Layout ── */
+
+.app {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  height: 100vh;
+}
+
+/* ── Sidebar ── */
+
+.sessions {
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 16px 14px;
+  flex-shrink: 0;
+}
+
+.brand {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  color: var(--accent);
+}
+
+.icon-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 5px;
+  border-radius: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  transition: background 0.15s, color 0.15s;
+}
+
+.icon-btn:hover {
+  background: var(--bg-hover);
+  color: var(--accent);
+}
+
+.session-list {
+  overflow-y: auto;
+  flex: 1;
+  padding: 4px 8px 12px;
+}
+
+.session {
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  padding: 10px 12px;
+  border-radius: 7px;
+  cursor: pointer;
+  margin-bottom: 1px;
+  transition: background 0.15s;
+  display: block;
+}
+
+.session:hover {
+  background: var(--bg-hover);
+}
+
+.session.active {
+  background: var(--bg-active);
+}
+
+.session .title {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--accent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.4;
+}
+
+/* ── Chat area ── */
+
+.chat {
+  display: flex;
+  flex-direction: column;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.messages {
+  flex: 1;
+  padding: 32px 15% 16px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* ── Exchange (user + assistant pair) ── */
+
+.exchange {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+/* ── Bubbles ── */
+
+.bubble {
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.bubble.user {
+  align-self: flex-end;
+  background: #f0f0f2;
+  color: var(--accent);
+  border-bottom-right-radius: 4px;
+  max-width: 80%;
+}
+
+.bubble.assistant {
+  align-self: flex-start;
+  background: #f9f9fa;
+  border: 1px solid #e8e8e8;
+  border-bottom-left-radius: 4px;
+  color: var(--accent);
+  max-width: 90%;
+}
+
+/* Markdown inside assistant bubble */
+.bubble.assistant p {
+  margin: 0 0 0.6em;
+}
+.bubble.assistant p:last-child {
+  margin-bottom: 0;
+}
+.bubble.assistant code {
+  background: #efefef;
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-size: 0.88em;
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+}
+.bubble.assistant pre {
+  background: #f0f0f0;
+  border-radius: 8px;
+  padding: 12px 14px;
+  overflow-x: auto;
+  margin: 0.4em 0;
+}
+.bubble.assistant pre code {
+  background: none;
+  padding: 0;
+  font-size: 0.85em;
+}
+.bubble.assistant ul,
+.bubble.assistant ol {
+  padding-left: 1.4em;
+}
+.bubble.assistant li {
+  margin: 0.2em 0;
+}
+.bubble.assistant h1,
+.bubble.assistant h2,
+.bubble.assistant h3 {
+  font-size: 1em;
+  margin: 0.6em 0 0.3em;
+}
+
+/* ── Thinking animation ── */
+
+.bubble.thinking {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  padding: 14px 18px;
+  background: #f9f9fa;
+  border: 1px solid #e8e8e8;
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #bbb;
+  animation: blink 1.3s ease-in-out infinite;
+}
+.dot:nth-child(2) { animation-delay: 0.18s; }
+.dot:nth-child(3) { animation-delay: 0.36s; }
+
+@keyframes blink {
+  0%, 70%, 100% { opacity: 0.25; transform: translateY(0); }
+  35% { opacity: 1; transform: translateY(-3px); }
+}
+
+/* ── Fork toolbar ── */
+
+.fork-toolbar {
+  display: flex;
+  gap: 6px;
+  opacity: 0;
+  transition: opacity 0.15s;
+  align-self: flex-start;
+  padding: 0 2px;
+}
+
+.exchange:hover .fork-toolbar {
+  opacity: 1;
+}
+
+.fork-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  transition: background 0.15s, color 0.15s;
+}
+
+.fork-btn:hover {
+  background: var(--bg-hover);
+  color: var(--accent);
+}
+
+/* ── Composer ── */
+
+.composer {
+  padding: 12px 15% 20px;
+  background: #ffffff;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.composer textarea {
+  flex: 1;
+  background: #f5f5f6;
+  border: none;
+  border-radius: 18px;
+  padding: 11px 18px;
+  min-height: 42px;
+  max-height: 140px;
+  resize: none;
+  font-size: 14px;
+  line-height: 1.4;
+  transition: background 0.15s;
+}
+
+.composer textarea:focus {
+  background: #ededef;
+}
+
+.composer textarea:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.send-btn {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.15s, transform 0.1s;
+}
+
+.send-btn:hover:not(:disabled) {
+  background: #333;
+  transform: scale(1.05);
+}
+
+.send-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* ── Responsive ── */
+
+@media (max-width: 720px) {
+  .app {
+    grid-template-columns: 1fr;
+  }
+  .sessions {
+    display: none;
+  }
+  .messages {
+    padding: 20px 6% 12px;
+  }
+  .composer {
+    padding: 10px 6% 16px;
+  }
+}

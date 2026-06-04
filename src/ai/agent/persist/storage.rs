@@ -7,6 +7,7 @@ use crate::ai::agent::persist::data_object::Checkpoint;
 use crate::ai::agent::persist::data_object::CheckpointContext;
 use crate::ai::agent::persist::data_object::NewCheckpoint;
 use crate::ai::agent::persist::data_object::NewSession;
+use crate::ai::agent::persist::data_object::PersistDiagnostics;
 use crate::ai::agent::persist::data_object::Session;
 
 #[async_trait]
@@ -16,6 +17,8 @@ pub trait IStorage {
     async fn create_session(&self, input: NewSession) -> anyhow::Result<Session>;
 
     async fn get_session(&self, session_id: Uuid) -> anyhow::Result<Session>;
+
+    async fn list_sessions(&self) -> anyhow::Result<Vec<Session>>;
 
     async fn archive_session(&self, session_id: Uuid) -> anyhow::Result<Session>;
 
@@ -45,6 +48,10 @@ pub trait IStorage {
         &self,
         checkpoint_id: Uuid,
     ) -> anyhow::Result<CheckpointContext>;
+
+    async fn checkpoint_local_ref_count(&self, checkpoint_id: Uuid) -> anyhow::Result<i64>;
+
+    async fn persist_diagnostics(&self) -> anyhow::Result<PersistDiagnostics>;
 
     // ── Fork ─────────────────────────────────────────────────────────────
 

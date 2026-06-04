@@ -29,3 +29,6 @@ run-bot-host:
 
 run-bot-host-debug:
 	RUST_LOG=debug cargo run
+
+run-chatbox-server:
+    cargo run --bin chatbox

@@ -528,6 +528,18 @@ mod tests {
                 .ok_or_else(|| anyhow::anyhow!("session not found"))
         }
 
+        async fn list_sessions(&self) -> anyhow::Result<Vec<Session>> {
+            Ok(self
+                .state
+                .lock()
+                .await
+                .sessions
+                .iter()
+                .filter(|session| session.status == Status::Active)
+                .cloned()
+                .collect())
+        }
+
         async fn archive_session(&self, session_id: Uuid) -> anyhow::Result<Session> {
             let mut state = self.state.lock().await;
             let session = state
@@ -599,6 +611,32 @@ mod tests {
             Ok(CheckpointContext {
                 checkpoint,
                 snapshot: make_snapshot("deepseek-v4-flash", messages),
+            })
+        }
+
+        async fn checkpoint_local_ref_count(&self, checkpoint_id: Uuid) -> anyhow::Result<i64> {
+            let state = self.state.lock().await;
+            let count = state
+                .contexts
+                .get(&checkpoint_id)
+                .map(|messages| messages.len() as i64)
+                .unwrap_or(0);
+            Ok(count)
+        }
+
+        async fn persist_diagnostics(
+            &self,
+        ) -> anyhow::Result<crate::ai::agent::persist::data_object::PersistDiagnostics> {
+            let state = self.state.lock().await;
+            Ok(crate::ai::agent::persist::data_object::PersistDiagnostics {
+                session_count: state
+                    .sessions
+                    .iter()
+                    .filter(|session| session.status == Status::Active)
+                    .count() as i64,
+                checkpoint_count: state.checkpoints.len() as i64,
+                message_count: state.contexts.values().flatten().count() as i64,
+                checkpoint_local_ref_count: state.contexts.values().flatten().count() as i64,
             })
         }
 

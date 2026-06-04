@@ -18,6 +18,14 @@ pub struct Session {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PersistDiagnostics {
+    pub session_count: i64,
+    pub checkpoint_count: i64,
+    pub message_count: i64,
+    pub checkpoint_local_ref_count: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Status {
     Active,
