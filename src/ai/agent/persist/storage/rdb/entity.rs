@@ -1,21 +1,23 @@
 use chrono::DateTime;
 use chrono::Utc;
-use sqlx::types::Json;
 use uuid::Uuid;
 
 use crate::ai::agent::persist::data_object;
+use crate::ai::agent::persist::data_object::CheckpointKind;
 use crate::ai::agent::persist::data_object::ContextSnapshot;
 use crate::ai::agent::persist::data_object::Message;
 use crate::ai::agent::persist::data_object::NewCheckpoint;
 use crate::ai::agent::persist::data_object::NewSession;
+use crate::ai::agent::persist::data_object::hash_message;
 
-pub(super) struct Session {
+// ── Session ──────────────────────────────────────────────────────────────────
+
+pub(super) struct SessionEntity {
     pub(super) id: Uuid,
     pub(super) name: Option<String>,
     pub(super) model: String,
     pub(super) status: SessionStatus,
-    pub(super) parent_session_id: Option<Uuid>,
-    pub(super) parent_checkpoint_id: Option<Uuid>,
+    pub(super) forked_from_checkpoint_id: Option<Uuid>,
     pub(super) created_at: DateTime<Utc>,
     pub(super) updated_at: DateTime<Utc>,
 }
@@ -49,7 +51,7 @@ impl SessionStatus {
     }
 }
 
-impl Session {
+impl SessionEntity {
     pub(super) fn new(input: NewSession) -> Self {
         let now = Utc::now();
         Self {
@@ -57,8 +59,7 @@ impl Session {
             name: input.name,
             model: input.model,
             status: SessionStatus::Active,
-            parent_session_id: input.parent_session_id,
-            parent_checkpoint_id: input.parent_checkpoint_id,
+            forked_from_checkpoint_id: input.forked_from_checkpoint_id,
             created_at: now,
             updated_at: now,
         }
@@ -69,8 +70,7 @@ impl Session {
         name: Option<String>,
         model: String,
         status: String,
-        parent_session_id: Option<Uuid>,
-        parent_checkpoint_id: Option<Uuid>,
+        forked_from_checkpoint_id: Option<Uuid>,
         created_at: DateTime<Utc>,
         updated_at: DateTime<Utc>,
     ) -> anyhow::Result<Self> {
@@ -79,8 +79,7 @@ impl Session {
             name,
             model,
             status: SessionStatus::from_db(status.as_str())?,
-            parent_session_id,
-            parent_checkpoint_id,
+            forked_from_checkpoint_id,
             created_at,
             updated_at,
         })
@@ -92,95 +91,111 @@ impl Session {
             name: self.name,
             model: self.model,
             status: self.status.to_data_object(),
-            parent_session_id: self.parent_session_id,
-            parent_checkpoint_id: self.parent_checkpoint_id,
+            forked_from_checkpoint_id: self.forked_from_checkpoint_id,
             created_at: self.created_at,
             updated_at: self.updated_at,
         }
     }
 }
 
-pub(super) struct Checkpoint {
-    pub(super) id: Uuid,
-    pub(super) session_id: Uuid,
-    pub(super) run_id: Option<Uuid>,
-    pub(super) kind: CheckpointKind,
-    pub(super) snapshot: ContextSnapshot,
-    pub(super) created_at: DateTime<Utc>,
+// ── Stored message ───────────────────────────────────────────────────────────
+
+pub(super) fn upsert_row(message: &Message) -> (Uuid, Vec<u8>) {
+    let hash = hash_message(message);
+    // Derive a deterministic UUID from the hash so that we always get the
+    // same id for the same payload — this plays nicely with `ON CONFLICT`.
+    let id = Uuid::from_slice(&hash[..16])
+        .expect("hash-derived UUID should be valid");
+    (id, hash)
 }
 
-pub(super) enum CheckpointKind {
-    BeforeRun,
-    AfterRun,
+// ── Checkpoint ───────────────────────────────────────────────────────────────
+
+pub(super) struct CheckpointEntity {
+    pub(super) id: Uuid,
+    pub(super) session_id: Uuid,
+    pub(super) solution_id: Option<Uuid>,
+    pub(super) kind: CheckpointKindValue,
+    pub(super) model: String,
+    pub(super) base_checkpoint_id: Option<Uuid>,
+    pub(super) created_at: DateTime<Utc>,
+    /// Local message refs (only the suffix beyond the base).
+    pub(super) message_refs: Vec<data_object::CheckpointMessageRef>,
+}
+
+pub(super) enum CheckpointKindValue {
+    BeforeSolution,
+    AfterSolution,
     Fork,
 }
 
-impl CheckpointKind {
+impl CheckpointKindValue {
     pub(super) fn db_value(&self) -> &'static str {
         match self {
-            Self::BeforeRun => "before_run",
-            Self::AfterRun => "after_run",
+            Self::BeforeSolution => "before_solution",
+            Self::AfterSolution => "after_solution",
             Self::Fork => "fork",
         }
     }
 
     fn from_db(value: &str) -> anyhow::Result<Self> {
         match value {
-            "before_run" => Ok(Self::BeforeRun),
-            "after_run" => Ok(Self::AfterRun),
+            "before_solution" => Ok(Self::BeforeSolution),
+            "after_solution" => Ok(Self::AfterSolution),
             "fork" => Ok(Self::Fork),
             other => Err(anyhow::anyhow!("unknown checkpoint kind: {}", other)),
         }
     }
 
-    fn from_data_object(kind: data_object::CheckpointKind) -> Self {
+    fn from_data_object(kind: CheckpointKind) -> Self {
         match kind {
-            data_object::CheckpointKind::BeforeRun => Self::BeforeRun,
-            data_object::CheckpointKind::AfterRun => Self::AfterRun,
-            data_object::CheckpointKind::Fork => Self::Fork,
+            CheckpointKind::BeforeSolution => Self::BeforeSolution,
+            CheckpointKind::AfterSolution => Self::AfterSolution,
+            CheckpointKind::Fork => Self::Fork,
         }
     }
 
-    fn to_data_object(&self) -> data_object::CheckpointKind {
+    fn to_data_object(&self) -> CheckpointKind {
         match self {
-            Self::BeforeRun => data_object::CheckpointKind::BeforeRun,
-            Self::AfterRun => data_object::CheckpointKind::AfterRun,
-            Self::Fork => data_object::CheckpointKind::Fork,
+            Self::BeforeSolution => CheckpointKind::BeforeSolution,
+            Self::AfterSolution => CheckpointKind::AfterSolution,
+            Self::Fork => CheckpointKind::Fork,
         }
     }
 }
 
-impl Checkpoint {
+impl CheckpointEntity {
     pub(super) fn new(input: NewCheckpoint) -> Self {
         Self {
             id: Uuid::new_v4(),
             session_id: input.session_id,
-            run_id: input.run_id,
-            kind: CheckpointKind::from_data_object(input.kind),
-            snapshot: input.snapshot,
+            solution_id: input.solution_id,
+            kind: CheckpointKindValue::from_data_object(input.kind),
+            model: input.model,
+            base_checkpoint_id: None,
             created_at: Utc::now(),
+            message_refs: Vec::new(),
         }
     }
 
     pub(super) fn from_db(
         id: Uuid,
         session_id: Uuid,
-        run_id: Option<Uuid>,
+        solution_id: Option<Uuid>,
         kind: String,
         model: String,
-        messages: Json<Vec<Message>>,
+        base_checkpoint_id: Option<Uuid>,
         created_at: DateTime<Utc>,
     ) -> anyhow::Result<Self> {
         Ok(Self {
             id,
             session_id,
-            run_id,
-            kind: CheckpointKind::from_db(kind.as_str())?,
-            snapshot: ContextSnapshot {
-                model,
-                messages: messages.0,
-            },
+            solution_id,
+            kind: CheckpointKindValue::from_db(kind.as_str())?,
+            model,
+            base_checkpoint_id,
             created_at,
+            message_refs: Vec::new(),
         })
     }
 
@@ -188,12 +203,20 @@ impl Checkpoint {
         data_object::Checkpoint {
             id: self.id,
             session_id: self.session_id,
-            run_id: self.run_id,
+            solution_id: self.solution_id,
             kind: self.kind.to_data_object(),
-            snapshot: self.snapshot,
+            model: self.model,
+            base_checkpoint_id: self.base_checkpoint_id,
             created_at: self.created_at,
         }
     }
+}
+
+// ── Context reconstruction helpers ───────────────────────────────────────────
+
+pub(super) struct ReconstructedCheckpoint {
+    pub(super) entity: CheckpointEntity,
+    pub(super) snapshot: ContextSnapshot,
 }
 
 #[cfg(test)]
@@ -217,21 +240,45 @@ mod tests {
 
     #[test]
     fn checkpoint_kind_maps_database_values() {
-        assert_eq!(CheckpointKind::BeforeRun.db_value(), "before_run");
-        assert_eq!(CheckpointKind::AfterRun.db_value(), "after_run");
-        assert_eq!(CheckpointKind::Fork.db_value(), "fork");
+        assert_eq!(CheckpointKindValue::BeforeSolution.db_value(), "before_solution");
+        assert_eq!(CheckpointKindValue::AfterSolution.db_value(), "after_solution");
+        assert_eq!(CheckpointKindValue::Fork.db_value(), "fork");
         assert!(matches!(
-            CheckpointKind::from_db("before_run").unwrap(),
-            CheckpointKind::BeforeRun
+            CheckpointKindValue::from_db("before_solution").unwrap(),
+            CheckpointKindValue::BeforeSolution
         ));
         assert!(matches!(
-            CheckpointKind::from_db("after_run").unwrap(),
-            CheckpointKind::AfterRun
+            CheckpointKindValue::from_db("after_solution").unwrap(),
+            CheckpointKindValue::AfterSolution
         ));
         assert!(matches!(
-            CheckpointKind::from_db("fork").unwrap(),
-            CheckpointKind::Fork
+            CheckpointKindValue::from_db("fork").unwrap(),
+            CheckpointKindValue::Fork
         ));
-        assert!(CheckpointKind::from_db("snapshot").is_err());
+        assert!(CheckpointKindValue::from_db("snapshot").is_err());
+    }
+
+    #[test]
+    fn stored_message_id_is_deterministic() {
+        let msg = Message::System {
+            content: "test".to_string(),
+        };
+        let (id1, hash1) = upsert_row(&msg);
+        let (id2, hash2) = upsert_row(&msg);
+        assert_eq!(id1, id2);
+        assert_eq!(hash1, hash2);
+    }
+
+    #[test]
+    fn stored_message_id_differs_for_different_content() {
+        let msg1 = Message::User {
+            content: "hello".to_string(),
+        };
+        let msg2 = Message::User {
+            content: "world".to_string(),
+        };
+        let (id1, _) = upsert_row(&msg1);
+        let (id2, _) = upsert_row(&msg2);
+        assert_ne!(id1, id2);
     }
 }

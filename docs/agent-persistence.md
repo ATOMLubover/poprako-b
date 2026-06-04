@@ -1,206 +1,150 @@
-# Agent Persistence
+# Agent 持久化：增量 Checkpoint 链
 
-This document describes the persistence features currently implemented for the
-agent layer.
+## 概述
 
-The implementation is scoped to `src/ai/agent`. It does not persist bot state,
-QQ message routing, resolver clients, tool instances, or tool definitions.
+将原先"checkpoint 存完整 `ContextSnapshot.messages`" 改为三层语义：
 
-## What Is Implemented
+- **Message**：不可变的消息内容原子，只存一次，用 SHA-256 hash 去重。
+- **Checkpoint**：不可变的上下文位置，指向 `base_checkpoint_id`，只存相对 base 新增的有序 message 引用。
+- **Session**：可继续写入的会话分支，通过 `forked_from_checkpoint_id` 记录起点。
 
-- Persistent sessions for agent conversations.
-- Persistent checkpoints for agent context snapshots.
-- Forking a new session from an existing checkpoint.
-- Snapshot encoding and decoding for OpenAI chat messages.
-- PostgreSQL storage backed by `sqlx`.
-- Reversible SQL migrations created with `sqlx migrate add -r`.
-- Unit and integration tests for data objects, codecs, manager behavior, and
-  PostgreSQL storage.
+## 数据库表
 
-## Module Layout
+### agent_messages
 
-```text
-src/ai/agent.rs
-src/ai/agent/persist.rs
-src/ai/agent/persist/data_object.rs
-src/ai/agent/persist/codec.rs
-src/ai/agent/persist/storage.rs
-src/ai/agent/persist/storage/rdb.rs
-src/ai/agent/persist/storage/rdb/entity.rs
-```
+消息内容表。同一内容（相同 role + payload）只存一条，由 `payload_hash` UNIQUE 约束保证。
 
-Responsibilities:
+| 列 | 类型 | 说明 |
+|---|---|---|
+| `id` | UUID PK | 由 `payload_hash` 前 16 字节导出的确定性 UUID |
+| `payload_hash` | BYTEA UNIQUE | serde_json 规范序列化后的 SHA-256 |
+| `role` | TEXT | `system` / `user` / `assistant` / `tool` |
+| `payload` | JSONB | 完整消息的 JSON |
+| `created_at` | TIMESTAMPTZ | |
 
-- `agent.rs`
-  - Owns `Agent`, `AgentBuilder`, and `AgentManager`.
-  - `AgentManager` orchestrates session creation, checkpoint creation, checkpoint
-    loading, checkpoint decoding, and fork operations.
-- `persist/data_object.rs`
-  - Defines agent-layer persistence data objects: `Session`, `Checkpoint`,
-    `ContextSnapshot`, `Message`, `ToolCall`, `Status`, `CheckpointKind`,
-    `NewSession`, and `NewCheckpoint`.
-  - These are the types used by `AgentManager`, codecs, and `IStorage`.
-- `persist/codec.rs`
-  - Defines `IMessageSnapshotCodec` and `IContextSnapshotCodec`.
-  - Implements OpenAI message snapshot conversion via `OpenAiCodec`.
-- `persist/storage.rs`
-  - Defines the storage trait `IStorage`.
-- `persist/storage/rdb.rs`
-  - Implements `IStorage` with PostgreSQL in `RdbStorage`.
-  - Uses `sqlx::query!` with raw multiline SQL strings for compile-time checked
-    SQL.
-- `persist/storage/rdb/entity.rs`
-  - Defines RDB-only storage entities and database value mapping.
-  - This module is private to the PostgreSQL implementation and is not exposed
-    to `AgentManager` or external callers.
+### agent_sessions
 
-## Stored Data
+会话（分支）表。
 
-The persisted context snapshot contains only:
+| 列 | 类型 | 说明 |
+|---|---|---|
+| `id` | UUID PK | |
+| `name` | TEXT? | 可选名称 |
+| `model` | TEXT | 默认模型 |
+| `status` | TEXT | `active` / `archived` |
+| `forked_from_checkpoint_id` | UUID? | fork 起点 checkpoint |
+| `created_at` | TIMESTAMPTZ | |
+| `updated_at` | TIMESTAMPTZ | |
 
-- `model`
-- `messages`
+### agent_checkpoints
 
-`tool_defs` are intentionally not stored. On resume or fork, tools are expected
-to be rebuilt from the current runtime tool registry. Existing context messages
-still preserve assistant tool-call names and tool result messages, so the model
-can infer prior tool activity from history.
+检查点元数据表，**不存储消息内容**。
 
-Message variants:
+| 列 | 类型 | 说明 |
+|---|---|---|
+| `id` | UUID PK | |
+| `session_id` | UUID FK | 所属会话 |
+| `solution_id` | UUID? | before/after 配对 ID |
+| `kind` | TEXT | `before_solution` / `after_solution` / `fork` |
+| `model` | TEXT | 该检查点使用的模型 |
+| `base_checkpoint_id` | UUID? | 自引用父检查点；NULL = reset 根 |
+| `created_at` | TIMESTAMPTZ | |
 
-- `system { content }`
-- `user { content }`
-- `assistant { content, refusal, tool_calls }`
-- `tool { tool_call_id, content }`
+索引：`(session_id, created_at, id)`
 
-Tool calls store:
+### agent_checkpoint_messages
 
-- `id`
-- `name`
-- `args`
+增量消息引用 join 表。
 
-`args` is stored as the raw argument string produced by the model.
+| 列 | 类型 | 说明 |
+|---|---|---|
+| `checkpoint_id` | UUID FK | |
+| `position` | INTEGER | 在基序列中的位置 |
+| `message_id` | UUID FK | 指向 `agent_messages.id` |
 
-## Database Schema
+主键：`(checkpoint_id, position)`
 
-Migrations live under `migrations/`:
+## Checkpoint 增量 / Reset 逻辑
 
-- `create-session-table`
-- `create-checkpoint-table`
+创建 checkpoint 时（在一个 DB 事务内）：
 
-Tables:
+1. `SELECT ... FOR UPDATE` 锁目标 session。
+2. 查找该 session 最新 checkpoint 的 id 作为 base；若无，使用 `session.forked_from_checkpoint_id`。
+3. 重建 base 的完整 message 序列。
+4. **增量路径**：若当前 context 以 base 为前缀，则本 checkpoint 只保存 suffix 的 message refs，`base_checkpoint_id` 指向父。
+5. **Reset 路径**：若非前缀（compact、system prompt reload 或其他上下文重写），`base_checkpoint_id = NULL`，引用当前全部 messages。
 
-- `agent_sessions`
-  - session identity, model, status, parent session/checkpoint references, and
-    timestamps.
-- `agent_checkpoints`
-  - checkpoint identity, session reference, optional run id, checkpoint kind,
-    model, JSONB messages, and timestamp.
+### 加载上下文
 
-The checkpoint migration also adds the `agent_sessions.parent_checkpoint_id`
-foreign key after both tables exist.
+`load_checkpoint_context(checkpoint_id)`：
+1. 沿 `base_checkpoint_id` 链从 root 到目标逐级读取各 checkpoint 的本地 refs。
+2. join `agent_checkpoint_messages` + `agent_messages` 获取实际消息。
+3. 按 checkpoint 链顺序 + position 拼接完整 message 序列。
+4. 使用目标 checkpoint 的 `model` 生成 `ContextSnapshot`。
 
-## AgentManager API
+### Fork
 
-`AgentManager<S, M, C>` is generic over:
+`fork_session_from_checkpoint(parent_checkpoint_id, name)`：
+1. 创建新 session，`forked_from_checkpoint_id` = parent checkpoint。
+2. 创建 `kind = fork` 的 checkpoint，`base_checkpoint_id` = parent checkpoint。
+3. 该 fork checkpoint 无本地 message refs——加载时沿 base 链追溯父 checkpoint 的完整上下文。
 
-- `S: IStorage`
-- `M: IMessage`
-- `C: IContextSnapshotCodec<M>`
+不复制任何消息。
 
-The codec type is constrained on the manager type itself; there is no
-unconstrained codec parameter and no default generic parameter.
+## 迁移文件
 
-Implemented operations:
+4 个 migration，每个只创建一张表（按依赖顺序）：
 
-- `new(store, codec)`
-- `new_openai(store)`
-- `store()`
-- `create_session(model, name)`
-- `archive_session(session_id)`
-- `load_checkpoint(checkpoint_id)`
-- `list_checkpoints(session_id)`
-- `fork_from_checkpoint(parent_checkpoint_id, name)`
-- `checkpoint_before_run(session_id, agent)`
-- `checkpoint_after_run(session_id, run_id, agent)`
-- `decode_checkpoint(checkpoint)`
-- `snapshot_from_agent(agent)`
+| 文件 | 内容 |
+|---|---|
+| `20260604130000_create-agent-messages` | agent_messages |
+| `20260604130100_create-agent-sessions` | agent_sessions |
+| `20260604130200_create-agent-checkpoints` | agent_checkpoints + 索引 + FK |
+| `20260604130300_create-agent-checkpoint-messages` | agent_checkpoint_messages |
 
-`checkpoint_before_run` creates a fresh `run_id`. The caller passes that same
-`run_id` into `checkpoint_after_run` to pair the before/after checkpoints.
+正反迁移均完备，`sqlx migrate revert` 可逆序回滚。
 
-## Fork Semantics
+## 代码层
 
-Forking is implemented by copying the parent checkpoint snapshot into a new
-session.
+### 数据对象 (`src/ai/agent/persist/data_object.rs`)
 
-The forked session records:
+- `Session`：`forked_from_checkpoint_id` 替代 `parent_session_id` + `parent_checkpoint_id`。
+- `Checkpoint`：纯元数据，不包含 `snapshot`。新增 `base_checkpoint_id`。
+- `ContextSnapshot`：保留为 codec 边界类型，非存储实体。
+- `CheckpointContext`：`{ checkpoint: Checkpoint, snapshot: ContextSnapshot }`——加载 checkpoint 上下文时的返回类型。
+- `hash_message(&Message) -> Vec<u8>`：SHA-256 哈希工具。
 
-- `parent_session_id`
-- `parent_checkpoint_id`
-
-The fork operation also creates an initial `fork` checkpoint under the new
-session. The operation is executed in one PostgreSQL transaction.
-
-There is no merge implementation.
-
-## PostgreSQL Storage
-
-`persist::storage::IStorage` is the storage trait.
-`persist::storage::rdb::RdbStorage` is the PostgreSQL implementation.
-
-Construction:
+### 存储接口 (`src/ai/agent/persist/storage.rs`)
 
 ```rust
-let storage = poprako_b_preview::ai::agent::persist::storage::rdb::RdbStorage::from_env().await?;
+async fn create_checkpoint(&self, input: NewCheckpoint) -> anyhow::Result<Checkpoint>;
+async fn get_checkpoint(&self, checkpoint_id: Uuid) -> anyhow::Result<Checkpoint>;
+async fn list_checkpoints(&self, session_id: Uuid) -> anyhow::Result<Vec<Checkpoint>>;
+async fn load_checkpoint_context(&self, checkpoint_id: Uuid) -> anyhow::Result<CheckpointContext>;
+async fn fork_session_from_checkpoint(&self, parent_checkpoint_id: Uuid, name: Option<String>)
+    -> anyhow::Result<(Session, Checkpoint)>;
 ```
 
-`from_env` reads:
+- `get_checkpoint` / `list_checkpoints` 返回 metadata，**不隐式加载完整上下文**。
+- 需要完整上下文时显式调用 `load_checkpoint_context`。
+- `NewCheckpoint` 接受 `messages: Vec<Message>`，存储层内部决定增量/reset。
 
-```env
-DATABASE_URL=postgresql://...
+### AgentManager 使用方式
+
+```rust
+// 创建 checkpoint（存储层自动决定增量/reset）
+let cp = manager.checkpoint_before_solution(session_id, &agent).await?;
+
+// 加载完整上下文
+let ctx = manager.load_checkpoint_context(cp.id).await?;
+let context: Context<M> = manager.decode_snapshot(&ctx.snapshot)?;
+
+// Fork
+let (fork_session, fork_cp) = manager.fork_from_checkpoint(cp.id, Some("分支名")).await?;
 ```
 
-The implementation uses:
+## 假设
 
-- `sqlx::query!`
-- raw multiline SQL strings with `r#"... "#`
-- JSONB storage for `Vec<Message>`
-- transactions for fork
-
-## Tests
-
-Implemented tests cover:
-
-- RDB entity enum-to-database string mapping
-- data object JSON serialization
-- context snapshot JSON round trip
-- OpenAI message codec round trip
-- assistant tool-call preservation
-- omission of `tool_defs` from snapshots
-- `AgentManager` create/archive/checkpoint/decode/fork behavior using a fake
-  store
-- PostgreSQL session lifecycle
-- PostgreSQL checkpoint lifecycle and ordering
-- PostgreSQL fork behavior
-- PostgreSQL foreign-key failure for checkpoints without sessions
-
-The full test suite currently passes:
-
-```text
-cargo test
-70 passed
-```
-
-## Current Non-Goals
-
-The current implementation does not provide:
-
-- bot-layer session routing
-- automatic persistence inside `BotAgent::try_respond`
-- resolver client persistence
-- tool instance persistence
-- tool definition persistence
-- event-sourcing replay
-- branch merge
-- tool result cache
+- agent_messages 是内容原子，不表达"某用户在某时间发了第几次相同内容"——顺序由 checkpoint refs 表达。
+- compact 不作为删除历史的操作持久化；它只会导致 reset checkpoint。
+- bot 层 QQ 路由 session 不纳入本次重设计。

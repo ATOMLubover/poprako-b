@@ -6,6 +6,7 @@ use uuid::Uuid;
 use crate::ai::agent::persist::codec::IContextSnapshotCodec;
 use crate::ai::agent::persist::codec::OpenAiCodec;
 use crate::ai::agent::persist::data_object::Checkpoint;
+use crate::ai::agent::persist::data_object::CheckpointContext;
 use crate::ai::agent::persist::data_object::CheckpointKind;
 use crate::ai::agent::persist::data_object::ContextSnapshot;
 use crate::ai::agent::persist::data_object::NewCheckpoint;
@@ -341,8 +342,7 @@ where
             .create_session(NewSession {
                 name,
                 model: model.into(),
-                parent_session_id: None,
-                parent_checkpoint_id: None,
+                forked_from_checkpoint_id: None,
             })
             .await
     }
@@ -359,6 +359,14 @@ where
         self.store.list_checkpoints(session_id).await
     }
 
+    /// Load full checkpoint context (metadata + reconstructed messages) from storage.
+    pub async fn load_checkpoint_context(
+        &self,
+        checkpoint_id: Uuid,
+    ) -> anyhow::Result<CheckpointContext> {
+        self.store.load_checkpoint_context(checkpoint_id).await
+    }
+
     pub async fn fork_from_checkpoint(
         &self,
         parent_checkpoint_id: Uuid,
@@ -369,7 +377,7 @@ where
             .await
     }
 
-    pub async fn checkpoint_before_run<R>(
+    pub async fn checkpoint_before_solution<R>(
         &self,
         session_id: Uuid,
         agent: &Agent<M, R>,
@@ -377,52 +385,55 @@ where
     where
         R: IResolver<Message = M> + Send,
     {
-        let run_id = Uuid::new_v4();
-        self.create_agent_checkpoint(session_id, Some(run_id), CheckpointKind::BeforeRun, agent)
+        let solution_id = Uuid::new_v4();
+        self.create_agent_checkpoint(session_id, Some(solution_id), CheckpointKind::BeforeSolution, agent)
             .await
     }
 
-    pub async fn checkpoint_after_run<R>(
+    pub async fn checkpoint_after_solution<R>(
         &self,
         session_id: Uuid,
-        run_id: Uuid,
+        solution_id: Uuid,
         agent: &Agent<M, R>,
     ) -> anyhow::Result<Checkpoint>
     where
         R: IResolver<Message = M> + Send,
     {
-        self.create_agent_checkpoint(session_id, Some(run_id), CheckpointKind::AfterRun, agent)
+        self.create_agent_checkpoint(session_id, Some(solution_id), CheckpointKind::AfterSolution, agent)
             .await
     }
 
-    pub fn decode_checkpoint(&self, checkpoint: &Checkpoint) -> anyhow::Result<Context<M>> {
-        self.codec.decode_context(&checkpoint.snapshot)
-    }
-
-    pub fn snapshot_from_agent<R>(&self, agent: &Agent<M, R>) -> anyhow::Result<ContextSnapshot>
+    /// Encode agent context into a `ContextSnapshot` via the codec.
+    pub fn encode_snapshot<R>(&self, agent: &Agent<M, R>) -> anyhow::Result<ContextSnapshot>
     where
         R: IResolver<Message = M> + Send,
     {
         self.codec.encode_context(agent.context())
     }
 
+    /// Decode a `ContextSnapshot` into a resolver `Context<M>`.
+    pub fn decode_snapshot(&self, snapshot: &ContextSnapshot) -> anyhow::Result<Context<M>> {
+        self.codec.decode_context(snapshot)
+    }
+
     async fn create_agent_checkpoint<R>(
         &self,
         session_id: Uuid,
-        run_id: Option<Uuid>,
+        solution_id: Option<Uuid>,
         kind: CheckpointKind,
         agent: &Agent<M, R>,
     ) -> anyhow::Result<Checkpoint>
     where
         R: IResolver<Message = M> + Send,
     {
-        let snapshot = self.snapshot_from_agent(agent)?;
+        let snapshot = self.encode_snapshot(agent)?;
         self.store
             .create_checkpoint(NewCheckpoint {
                 session_id,
-                run_id,
+                solution_id,
                 kind,
-                snapshot,
+                model: snapshot.model,
+                messages: snapshot.messages,
             })
             .await
     }
@@ -437,6 +448,7 @@ mod tests {
 
     use std::path::PathBuf;
 
+    use crate::ai::agent::persist::data_object::Message;
     use crate::ai::agent::persist::data_object::Status;
     use crate::ai::agent::tool::local::fs::{CreateFileTool, ReadFileTool};
     use crate::ai::resolver::action::Action;
@@ -457,6 +469,9 @@ mod tests {
     struct FakeState {
         sessions: Vec<Session>,
         checkpoints: Vec<Checkpoint>,
+        /// (checkpoint_id -> Vec<Message>) storing the reconstructed context
+        /// that would be produced by load_checkpoint_context.
+        contexts: HashMap<Uuid, Vec<Message>>,
         forks: Vec<(Uuid, Option<String>)>,
     }
 
@@ -479,6 +494,13 @@ mod tests {
         }
     }
 
+    fn make_snapshot(model: &str, messages: Vec<Message>) -> ContextSnapshot {
+        ContextSnapshot {
+            model: model.to_string(),
+            messages,
+        }
+    }
+
     #[async_trait::async_trait]
     impl IStorage for FakeStore {
         async fn create_session(&self, input: NewSession) -> anyhow::Result<Session> {
@@ -487,8 +509,7 @@ mod tests {
                 name: input.name,
                 model: input.model,
                 status: Status::Active,
-                parent_session_id: input.parent_session_id,
-                parent_checkpoint_id: input.parent_checkpoint_id,
+                forked_from_checkpoint_id: input.forked_from_checkpoint_id,
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
             };
@@ -522,12 +543,17 @@ mod tests {
             let checkpoint = Checkpoint {
                 id: Uuid::new_v4(),
                 session_id: input.session_id,
-                run_id: input.run_id,
+                solution_id: input.solution_id,
                 kind: input.kind,
-                snapshot: input.snapshot,
+                model: input.model,
+                base_checkpoint_id: None,
                 created_at: chrono::Utc::now(),
             };
-            self.state.lock().await.checkpoints.push(checkpoint.clone());
+            let mut state = self.state.lock().await;
+            state
+                .contexts
+                .insert(checkpoint.id, input.messages.clone());
+            state.checkpoints.push(checkpoint.clone());
             Ok(checkpoint)
         }
 
@@ -554,34 +580,78 @@ mod tests {
                 .collect())
         }
 
+        async fn load_checkpoint_context(
+            &self,
+            checkpoint_id: Uuid,
+        ) -> anyhow::Result<CheckpointContext> {
+            let state = self.state.lock().await;
+            let checkpoint = state
+                .checkpoints
+                .iter()
+                .find(|c| c.id == checkpoint_id)
+                .cloned()
+                .ok_or_else(|| anyhow::anyhow!("checkpoint not found"))?;
+            let messages = state
+                .contexts
+                .get(&checkpoint_id)
+                .cloned()
+                .unwrap_or_default();
+            Ok(CheckpointContext {
+                checkpoint,
+                snapshot: make_snapshot("deepseek-v4-flash", messages),
+            })
+        }
+
         async fn fork_session_from_checkpoint(
             &self,
             parent_checkpoint_id: Uuid,
             name: Option<String>,
         ) -> anyhow::Result<(Session, Checkpoint)> {
-            self.state
-                .lock()
-                .await
-                .forks
-                .push((parent_checkpoint_id, name.clone()));
+            // Clone name before moving it into create_session.
+            let fork_name = name.clone();
 
-            let parent = self.get_checkpoint(parent_checkpoint_id).await?;
+            // Fetch parent data under a short lock, then construct new entities
+            // outside the lock to avoid deadlocking with self.create_session().
+            let (parent_model, parent_messages) = {
+                let state = self.state.lock().await;
+                let parent = state
+                    .checkpoints
+                    .iter()
+                    .find(|c| c.id == parent_checkpoint_id)
+                    .cloned()
+                    .ok_or_else(|| anyhow::anyhow!("parent checkpoint not found"))?;
+                let msgs = state
+                    .contexts
+                    .get(&parent_checkpoint_id)
+                    .cloned()
+                    .unwrap_or_default();
+                (parent.model.clone(), msgs)
+            };
+
             let session = self
                 .create_session(NewSession {
                     name,
-                    model: parent.snapshot.model.clone(),
-                    parent_session_id: Some(parent.session_id),
-                    parent_checkpoint_id: Some(parent.id),
+                    model: parent_model.clone(),
+                    forked_from_checkpoint_id: Some(parent_checkpoint_id),
                 })
                 .await?;
-            let checkpoint = self
-                .create_checkpoint(NewCheckpoint {
-                    session_id: session.id,
-                    run_id: None,
-                    kind: CheckpointKind::Fork,
-                    snapshot: parent.snapshot,
-                })
-                .await?;
+
+            let checkpoint = Checkpoint {
+                id: Uuid::new_v4(),
+                session_id: session.id,
+                solution_id: None,
+                kind: CheckpointKind::Fork,
+                model: parent_model,
+                base_checkpoint_id: Some(parent_checkpoint_id),
+                created_at: chrono::Utc::now(),
+            };
+
+            let mut state = self.state.lock().await;
+            state.forks.push((parent_checkpoint_id, fork_name));
+            state
+                .contexts
+                .insert(checkpoint.id, parent_messages);
+            state.checkpoints.push(checkpoint.clone());
 
             Ok((session, checkpoint))
         }
@@ -628,21 +698,24 @@ mod tests {
         let agent = test_agent();
 
         let before = manager
-            .checkpoint_before_run(session_id, &agent)
+            .checkpoint_before_solution(session_id, &agent)
             .await
             .unwrap();
         let after = manager
-            .checkpoint_after_run(session_id, before.run_id.unwrap(), &agent)
+            .checkpoint_after_solution(session_id, before.solution_id.unwrap(), &agent)
             .await
             .unwrap();
-        let restored: Context<ChatCompletionMessageParam> =
-            manager.decode_checkpoint(&after).unwrap();
 
-        assert_eq!(before.kind, CheckpointKind::BeforeRun);
-        assert_eq!(after.kind, CheckpointKind::AfterRun);
-        assert_eq!(before.run_id, after.run_id);
-        assert_eq!(after.snapshot.model, "deepseek-v4-flash");
-        assert_eq!(after.snapshot.messages.len(), 2);
+        // Load context from after checkpoint.
+        let ctx = manager.load_checkpoint_context(after.id).await.unwrap();
+        let restored: Context<ChatCompletionMessageParam> =
+            manager.decode_snapshot(&ctx.snapshot).unwrap();
+
+        assert_eq!(before.kind, CheckpointKind::BeforeSolution);
+        assert_eq!(after.kind, CheckpointKind::AfterSolution);
+        assert_eq!(before.solution_id, after.solution_id);
+        assert_eq!(ctx.snapshot.model, "deepseek-v4-flash");
+        assert_eq!(ctx.snapshot.messages.len(), 2);
         assert_eq!(restored.model(), "deepseek-v4-flash");
         assert_eq!(restored.messages().len(), 2);
     }
@@ -655,7 +728,7 @@ mod tests {
         let session_id = Uuid::new_v4();
         let agent = test_agent();
         let checkpoint = manager
-            .checkpoint_before_run(session_id, &agent)
+            .checkpoint_before_solution(session_id, &agent)
             .await
             .unwrap();
 
@@ -664,14 +737,32 @@ mod tests {
             .await
             .unwrap();
 
-        let state = state.lock().await;
-        assert_eq!(state.forks.len(), 1);
-        assert_eq!(state.forks[0].0, checkpoint.id);
+        {
+            let fstate = state.lock().await;
+            assert_eq!(fstate.forks.len(), 1);
+            assert_eq!(fstate.forks[0].0, checkpoint.id);
+        }
         assert_eq!(fork.name.as_deref(), Some("forked"));
-        assert_eq!(fork.parent_session_id, Some(checkpoint.session_id));
-        assert_eq!(fork.parent_checkpoint_id, Some(checkpoint.id));
+        assert_eq!(
+            fork.forked_from_checkpoint_id,
+            Some(checkpoint.id)
+        );
         assert_eq!(fork_checkpoint.kind, CheckpointKind::Fork);
-        assert_eq!(fork_checkpoint.snapshot, checkpoint.snapshot);
+        assert_eq!(
+            fork_checkpoint.base_checkpoint_id,
+            Some(checkpoint.id)
+        );
+
+        // Fork checkpoint context should match parent.
+        let fork_ctx = manager
+            .load_checkpoint_context(fork_checkpoint.id)
+            .await
+            .unwrap();
+        let parent_ctx = manager
+            .load_checkpoint_context(checkpoint.id)
+            .await
+            .unwrap();
+        assert_eq!(fork_ctx.snapshot.messages, parent_ctx.snapshot.messages);
     }
 
     #[tokio::test]
@@ -727,7 +818,8 @@ mod tests {
             target_file.display()
         );
 
-        let contents = std::fs::read_to_string(&target_file).expect("should read created file");
+        let contents =
+            std::fs::read_to_string(&target_file).expect("should read created file");
         assert!(
             contents.contains("hello from agent"),
             "file should contain 'hello from agent', got: {contents}"
