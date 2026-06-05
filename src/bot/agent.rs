@@ -1,16 +1,20 @@
+mod plugin;
 mod prompt;
-
 mod tool;
 mod value_object;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+use openai_oxide::types::chat::ChatCompletionMessageParam;
+use plugin::inspiration::InspirationAnnotation;
+use plugin::inspiration::InspirationState;
+use plugin::inspiration::InspiredAgent;
+use plugin::inspiration::InspiredAgentBuilder;
+use plugin::inspiration::modify_agent_builder;
 use tool::build_tools;
 
-use crate::ai::agent::compact::SlidingWindowCompact;
 use crate::ai::agent::tool::remote::RemoteProxy;
-use crate::ai::agent_impl::openai::{OpenAiAgent, OpenAiAgentBuilder};
 use crate::ai::resolver::context::ContextBuilder;
 use crate::ai::resolver::message::{MessageOwned, MessageRef};
 use crate::ai::resolver_impl::openai::OpenAiResolver;
@@ -29,7 +33,7 @@ pub use prompt::spawn_refresh_system_promt_task;
 const MODEL_NAME: &str = "deepseek-v4-flash";
 
 pub struct BotAgent {
-    agent: OpenAiAgent,
+    agent: InspiredAgent<ChatCompletionMessageParam, OpenAiResolver>,
     /// Map from user_qid to poprako-s user_id.
     id_transform: HashMap<String, String>,
 }
@@ -42,7 +46,7 @@ impl BotAgent {
         let tools = build_tools().await;
         let remote_proxy = RemoteProxy::from_local_config().await.ok();
 
-        let context = ContextBuilder::new(MODEL_NAME)
+        let context = ContextBuilder::<_, InspirationAnnotation>::new(MODEL_NAME)
             .messages(vec![
                 MessageRef::System {
                     content: &system_prompt,
@@ -51,11 +55,11 @@ impl BotAgent {
             ])
             .build();
 
-        let agent = OpenAiAgentBuilder::new(context, resolver)
-            .tools(tools)
-            .remote_proxy(remote_proxy)
-            .compact(SlidingWindowCompact::default())
-            .build();
+        let builder =
+            InspiredAgentBuilder::new_with_state(InspirationState::default(), context, resolver)
+                .tools(tools)
+                .remote_proxy(remote_proxy);
+        let agent = modify_agent_builder(builder).build();
 
         Ok(Self {
             agent,
