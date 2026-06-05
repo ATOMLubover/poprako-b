@@ -9,7 +9,7 @@ use crate::ai::agent::tool::local::fs::{ListFilesTool, ReadFileTool};
 use crate::ai::agent::tool::result::{ExecutionError, ExecutionResult};
 use crate::ai::agent_impl::openai::OpenAiAgentBuilder;
 use crate::ai::resolver::context::ContextBuilder;
-use crate::ai::resolver::tool::{ParamDef, PropDef, ToolDef};
+use crate::ai::resolver::tool::{ParamDef, PropDef, ToolDefination};
 use crate::ai::resolver_impl::openai::OpenAiResolver;
 
 pub struct RunSubagentsTool {
@@ -218,7 +218,7 @@ async fn run_sub_agent(
 
 #[async_trait::async_trait]
 impl ITool for RunSubagentsTool {
-    fn defination(&self) -> ToolDef {
+    fn defination(&self) -> ToolDefination {
         let params = ParamDef::new("object")
             .with_properties(vec![
                 (
@@ -247,7 +247,7 @@ impl ITool for RunSubagentsTool {
             ])
             .with_required(vec!["system_prompt".to_string(), "tasks".to_string()]);
 
-        ToolDef::new(
+        ToolDefination::new(
             "run_subagents",
             "Delegate multiple independent tasks to sub-agents that run in parallel. \
              Each sub-agent resolves independently and results are collected. \

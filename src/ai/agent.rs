@@ -1,6 +1,12 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 
+use crate::ai::agent::compact::Compact;
+use crate::ai::agent::interceptor::DynInterceptor;
+use crate::ai::agent::interceptor::Interceptor;
+use crate::ai::agent::interceptor::InterceptorFlow;
+use crate::ai::agent::interceptor::InterceptorRegistry;
+use crate::ai::agent::interceptor::ToolInterceptorFlow;
 use crate::ai::agent::tool::DynTool;
 use crate::ai::agent::tool::remote::RemoteProxy;
 use crate::ai::agent::tool::result::CallOutput;
@@ -13,27 +19,29 @@ use crate::ai::resolver::message::{IMessage, MessageRef};
 use crate::ai::resolver::tool::IToolCall;
 
 pub mod compact;
+pub mod interceptor;
 pub mod tool;
-
-pub type Compact<M> = fn(&mut Context<M>);
 
 pub struct Agent<M, R>
 where
-    M: IMessage + 'static,
+    M: IMessage + Send + Sync + 'static,
     R: IResolver<Message = M> + Send,
 {
     context: Context<M>,
+
     local_tools: HashMap<String, DynTool>,
     remote_proxy: Option<RemoteProxy>,
 
     resolver: R,
 
     compact: Option<Compact<M>>,
+
+    interceptor_registry: InterceptorRegistry<M>,
 }
 
 impl<M, R> Agent<M, R>
 where
-    M: IMessage + 'static,
+    M: IMessage + Send + Sync + 'static,
     R: IResolver<Message = M> + Send,
 {
     pub fn from_context(cx: Context<M>, resolver: R) -> Self {
@@ -43,6 +51,7 @@ where
             remote_proxy: None,
             resolver,
             compact: None,
+            interceptor_registry: InterceptorRegistry::new(),
         }
     }
 
@@ -51,56 +60,44 @@ where
 
         for tool in tools.into_iter() {
             let def = tool.defination();
-
             self.local_tools.insert(def.name.clone(), tool);
         }
 
         self.refresh_tools();
     }
 
-    pub fn push_message(&mut self, message: M) {
-        self.context.push_message(message);
-    }
-
-    pub fn set_messages(&mut self, messages: Vec<M>) {
-        self.context.set_messages(messages);
-    }
-
-    pub fn snapshot_messages(&self) -> Vec<M>
-    where
-        M: Clone,
-    {
-        self.context.messages().to_vec()
-    }
-
     pub fn context(&self) -> &Context<M> {
         &self.context
     }
 
-    /// Replace the first message (system prompt) while keeping the rest intact.
-    /// If the message list is empty, the new message is pushed as the sole entry.
-    pub fn replace_system_message(&mut self, message: M) {
-        let mut messages = self.context.take_messages();
-        if messages.is_empty() {
-            messages.push(message);
-        } else {
-            messages[0] = message;
-        }
-        self.context.set_messages(messages);
+    pub fn context_mut(&mut self) -> &mut Context<M> {
+        &mut self.context
     }
 
     pub fn set_compact(&mut self, compact: Compact<M>) {
         self.compact = Some(compact);
     }
 
+    pub fn push_interceptor<I>(&mut self, interceptor: I)
+    where
+        I: Interceptor<M> + 'static,
+    {
+        self.interceptor_registry.push(interceptor);
+    }
+
+    pub fn set_interceptors(&mut self, interceptors: Vec<DynInterceptor<M>>) {
+        self.interceptor_registry.set(interceptors);
+    }
+
     /// Replace all registered tools, returning the old ones.
-    pub fn replace_tools(&mut self, tools: Vec<DynTool>) -> Vec<DynTool> {
+    pub fn swap_tools(&mut self, tools: Vec<DynTool>) -> Vec<DynTool> {
         let old: Vec<DynTool> = self.local_tools.drain().map(|(_, v)| v).collect();
 
         for tool in tools {
             let def = tool.defination();
             self.local_tools.insert(def.name.clone(), tool);
         }
+
         self.refresh_tools();
 
         old
@@ -109,7 +106,33 @@ where
     /// Run the agent loop. Returns the final assistant text response, or `None`
     /// if the resolver failed before producing a final answer.
     pub async fn solve(&mut self) -> Option<String> {
+        if let InterceptorFlow::Stop { output } = self
+            .interceptor_registry
+            .before_solve(&mut self.context)
+            .await
+        {
+            return self.finish_solve(output).await;
+        }
+
+        let mut loop_index = 0;
+
         loop {
+            if let InterceptorFlow::Stop { output } = self
+                .interceptor_registry
+                .before_loop(&mut self.context, loop_index)
+                .await
+            {
+                return self.finish_solve(output).await;
+            }
+
+            if let InterceptorFlow::Stop { output } = self
+                .interceptor_registry
+                .before_resolve(&mut self.context)
+                .await
+            {
+                return self.finish_solve(output).await;
+            }
+
             let action = match self.resolver.resolve(&self.context).await {
                 Ok(action) => {
                     tracing::info!("resolver produced action: {:?}", action);
@@ -117,18 +140,18 @@ where
                 }
                 Err(e) => {
                     tracing::error!("resolve failed: {:?}", e);
-                    return None;
+                    return self.finish_solve(None).await;
                 }
             };
 
-            let reason = action.reason.clone();
-
-            // Extract finish content before action is consumed.
-            let finish_content = if matches!(reason, Reason::Finish) {
-                action.content.clone()
-            } else {
-                None
-            };
+            let mut action = action;
+            if let InterceptorFlow::Stop { output } = self
+                .interceptor_registry
+                .after_resolve(&mut self.context, &mut action)
+                .await
+            {
+                return self.finish_solve(output).await;
+            }
 
             // Process tool calls from the local action — no borrow on self.context.
             let tool_messages: Vec<M> = match &action.tool_calls {
@@ -136,7 +159,28 @@ where
                 Some(calls) => {
                     let mut messages = Vec::with_capacity(calls.len());
                     for call in calls {
-                        let result = self.handle_call(call).await;
+                        let mut result = match self
+                            .interceptor_registry
+                            .before_tool_call(&mut self.context, call)
+                            .await
+                        {
+                            ToolInterceptorFlow::Continue => self.handle_call(call).await,
+                            ToolInterceptorFlow::Skip { content } => {
+                                Ok(CallOutput::new(call.id().to_string(), content))
+                            }
+                            ToolInterceptorFlow::Stop { output } => {
+                                return self.finish_solve(output).await;
+                            }
+                        };
+
+                        if let InterceptorFlow::Stop { output } = self
+                            .interceptor_registry
+                            .after_tool_call(&mut self.context, call, &mut result)
+                            .await
+                        {
+                            return self.finish_solve(output).await;
+                        }
+
                         let message = match &result {
                             Ok(output) => M::from(MessageRef::Tool {
                                 tool_call_id: &output.call_id,
@@ -158,16 +202,45 @@ where
                 }
             };
 
+            let mut tool_messages = tool_messages;
+            if let InterceptorFlow::Stop { output } = self
+                .interceptor_registry
+                .before_commit_messages(&mut self.context, &mut action, &mut tool_messages)
+                .await
+            {
+                return self.finish_solve(output).await;
+            }
+
+            let reason = action.reason.clone();
+
+            // Extract finish content before action is consumed.
+            let finish_content = if matches!(reason, Reason::Finish) {
+                action.content.clone()
+            } else {
+                None
+            };
+
             // Push assistant message and tool results to context together.
             self.context.push_message(action.into());
             for msg in tool_messages {
                 self.context.push_message(msg);
             }
 
+            if let InterceptorFlow::Stop { output } = self
+                .interceptor_registry
+                .after_loop(&mut self.context, loop_index)
+                .await
+            {
+                return self.finish_solve(output).await;
+            }
+
             match reason {
-                Reason::Finish => return finish_content,
+                Reason::Finish => return self.finish_solve(finish_content).await,
                 // FIXME: ToolCall, Length, Unknown → continue the loop.
-                _ => continue,
+                _ => {
+                    loop_index += 1;
+                    continue;
+                }
             }
         }
     }
@@ -194,6 +267,17 @@ where
             "tool not found: {}",
             call.name()
         )))
+    }
+
+    async fn finish_solve(&mut self, mut output: Option<String>) -> Option<String> {
+        match self
+            .interceptor_registry
+            .after_solve(&mut self.context, &mut output)
+            .await
+        {
+            InterceptorFlow::Continue => output,
+            InterceptorFlow::Stop { output } => output,
+        }
     }
 
     fn refresh_tools(&mut self) {
@@ -223,7 +307,7 @@ where
 
 pub struct AgentBuilder<M, R>
 where
-    M: IMessage + 'static,
+    M: IMessage + Send + Sync + 'static,
     R: IResolver<Message = M> + Send,
 {
     context: Context<M>,
@@ -231,11 +315,12 @@ where
     tools: Vec<DynTool>,
     remote_proxy: Option<RemoteProxy>,
     compact: Option<Compact<M>>,
+    interceptors: Vec<DynInterceptor<M>>,
 }
 
 impl<M, R> AgentBuilder<M, R>
 where
-    M: IMessage + 'static,
+    M: IMessage + Send + Sync + 'static,
     R: IResolver<Message = M> + Send,
 {
     pub fn new(context: Context<M>, resolver: R) -> Self {
@@ -245,6 +330,7 @@ where
             tools: Vec::new(),
             remote_proxy: None,
             compact: None,
+            interceptors: Vec::new(),
         }
     }
 
@@ -263,11 +349,25 @@ where
         self
     }
 
+    pub fn interceptor<I>(mut self, interceptor: I) -> Self
+    where
+        I: Interceptor<M> + 'static,
+    {
+        self.interceptors.push(Box::new(interceptor));
+        self
+    }
+
+    pub fn interceptors(mut self, interceptors: Vec<DynInterceptor<M>>) -> Self {
+        self.interceptors = interceptors;
+        self
+    }
+
     pub fn build(self) -> Agent<M, R> {
         let mut agent = Agent::from_context(self.context, self.resolver);
 
         agent.compact = self.compact;
         agent.remote_proxy = self.remote_proxy;
+        agent.set_interceptors(self.interceptors);
         agent.set_tools(self.tools);
 
         agent
@@ -279,13 +379,118 @@ mod tests {
     use super::*;
 
     use std::path::PathBuf;
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::atomic::Ordering;
 
+    use crate::ai::agent::interceptor::InterceptorFlow;
     use crate::ai::agent::tool::local::fs::{CreateFileTool, ReadFileTool};
     use crate::ai::resolver::context::ContextBuilder;
+    use crate::ai::resolver::result::ResolveResult;
     use crate::ai::resolver_impl::openai::OpenAiResolver;
 
     use openai_oxide::types::chat::ChatCompletionMessageParam;
+    use openai_oxide::types::chat::ToolCall as OxToolCall;
     use openai_oxide::types::chat::UserContent;
+
+    struct CountingResolver {
+        calls: Arc<AtomicUsize>,
+        content: String,
+    }
+
+    #[async_trait::async_trait]
+    impl IResolver for CountingResolver {
+        type Message = ChatCompletionMessageParam;
+
+        async fn resolve(
+            &mut self,
+            _cx: &Context<Self::Message>,
+        ) -> ResolveResult<crate::ai::resolver::action::Action<OxToolCall>> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+
+            Ok(crate::ai::resolver::action::Action {
+                reason: Reason::Finish,
+                content: Some(self.content.clone()),
+                refusal: None,
+                tool_calls: None,
+            })
+        }
+    }
+
+    struct StopBeforeSolve;
+
+    #[async_trait::async_trait]
+    impl crate::ai::agent::interceptor::Interceptor<ChatCompletionMessageParam> for StopBeforeSolve {
+        async fn before_solve(
+            &mut self,
+            _cx: &mut Context<ChatCompletionMessageParam>,
+        ) -> InterceptorFlow {
+            InterceptorFlow::Stop {
+                output: Some("stopped".to_string()),
+            }
+        }
+    }
+
+    struct RewriteOutput;
+
+    #[async_trait::async_trait]
+    impl crate::ai::agent::interceptor::Interceptor<ChatCompletionMessageParam> for RewriteOutput {
+        async fn after_resolve(
+            &mut self,
+            _cx: &mut Context<ChatCompletionMessageParam>,
+            action: &mut crate::ai::resolver::action::Action<OxToolCall>,
+        ) -> InterceptorFlow {
+            action.content = Some("rewritten".to_string());
+            InterceptorFlow::Continue
+        }
+
+        async fn after_solve(
+            &mut self,
+            _cx: &mut Context<ChatCompletionMessageParam>,
+            output: &mut Option<String>,
+        ) -> InterceptorFlow {
+            *output = output.take().map(|text| format!("{}!", text));
+            InterceptorFlow::Continue
+        }
+    }
+
+    #[tokio::test]
+    async fn before_solve_interceptor_can_stop_without_resolving() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let resolver = CountingResolver {
+            calls: Arc::clone(&calls),
+            content: "resolver output".to_string(),
+        };
+        let cx = ContextBuilder::new("test-model").build();
+
+        let mut agent = AgentBuilder::new(cx, resolver)
+            .interceptor(StopBeforeSolve)
+            .build();
+
+        let result = agent.solve().await;
+
+        assert_eq!(result.as_deref(), Some("stopped"));
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn interceptors_can_rewrite_resolved_and_final_output() {
+        let calls = Arc::new(AtomicUsize::new(0));
+        let resolver = CountingResolver {
+            calls: Arc::clone(&calls),
+            content: "original".to_string(),
+        };
+        let cx = ContextBuilder::new("test-model").build();
+
+        let mut agent = AgentBuilder::new(cx, resolver)
+            .interceptor(RewriteOutput)
+            .build();
+
+        let result = agent.solve().await;
+
+        assert_eq!(result.as_deref(), Some("rewritten!"));
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
 
     #[tokio::test]
     async fn create_file_and_read() {
@@ -347,7 +552,7 @@ mod tests {
         );
 
         // Pop CreateFileTool out before agent drops, then clean up the file directly.
-        let _old_tools = agent.replace_tools(vec![]);
+        let _old_tools = agent.swap_tools(vec![]);
         let _ = std::fs::remove_file(&target_file);
     }
 }

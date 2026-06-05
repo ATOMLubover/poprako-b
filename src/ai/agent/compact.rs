@@ -1,6 +1,8 @@
 use crate::ai::resolver::context::Context;
 use crate::ai::resolver::message::{IMessage, MessageRole};
 
+pub type Compact<M> = fn(&mut Context<M>);
+
 pub fn sliding_window_compact<M>(cx: &mut Context<M>)
 where
     M: IMessage + 'static,

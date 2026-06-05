@@ -114,6 +114,7 @@ where
         agent: &Agent<M, R>,
     ) -> anyhow::Result<Checkpoint>
     where
+        M: Send + Sync,
         R: IResolver<Message = M> + Send,
     {
         let solution_id = Uuid::new_v4();
@@ -133,6 +134,7 @@ where
         agent: &Agent<M, R>,
     ) -> anyhow::Result<Checkpoint>
     where
+        M: Send + Sync,
         R: IResolver<Message = M> + Send,
     {
         self.create_agent_checkpoint(
@@ -147,6 +149,7 @@ where
     /// Encode agent context into a `ContextSnapshot` via the codec.
     pub fn encode_snapshot<R>(&self, agent: &Agent<M, R>) -> anyhow::Result<ContextSnapshot>
     where
+        M: Send + Sync,
         R: IResolver<Message = M> + Send,
     {
         self.codec.encode_context(agent.context())
@@ -165,6 +168,7 @@ where
         agent: &Agent<M, R>,
     ) -> anyhow::Result<Checkpoint>
     where
+        M: Send + Sync,
         R: IResolver<Message = M> + Send,
     {
         let snapshot = self.encode_snapshot(agent)?;

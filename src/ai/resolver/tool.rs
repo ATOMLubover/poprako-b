@@ -4,7 +4,7 @@ use serde::Deserialize;
 use serde::de::Error as DeError;
 
 #[derive(Debug, Clone, Default, Deserialize)]
-pub struct ToolDef {
+pub struct ToolDefination {
     pub name: String,
     pub description: String,
     pub parameters: ParamDef,
@@ -12,7 +12,7 @@ pub struct ToolDef {
     pub strict: Option<bool>,
 }
 
-impl ToolDef {
+impl ToolDefination {
     pub fn new(name: &str, description: &str, parameters: ParamDef) -> Self {
         Self {
             name: name.to_string(),

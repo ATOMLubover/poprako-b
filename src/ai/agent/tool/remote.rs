@@ -8,7 +8,7 @@ use crate::ai::agent::tool::result::CallOutput;
 use crate::ai::agent::tool::result::CallResult;
 use crate::ai::agent::tool::result::ExecutionError;
 use crate::ai::agent::tool::result::ExecutionResult;
-use crate::ai::resolver::tool::{IToolCall, ToolDef};
+use crate::ai::resolver::tool::{IToolCall, ToolDefination};
 use crate::http::HttpClient;
 
 const CONFIG_PATH: &str = "remote_tool.json";
@@ -32,7 +32,7 @@ async fn load_config() -> anyhow::Result<RemoteToolConfig> {
 }
 
 struct RemoteTool {
-    defination: ToolDef, // TODO: redundant
+    defination: ToolDefination, // TODO: redundant
     call_url: Url,
 }
 
@@ -95,8 +95,8 @@ impl RemoteProxy {
         Ok(proxy)
     }
 
-    pub fn tool_definations(&self) -> Vec<ToolDef> {
-        let mut definations: Vec<ToolDef> =
+    pub fn tool_definations(&self) -> Vec<ToolDefination> {
+        let mut definations: Vec<ToolDefination> =
             self.tools.values().map(|t| t.defination.clone()).collect();
         definations.sort_by(|a, b| a.name.cmp(&b.name));
 
@@ -128,7 +128,7 @@ impl RemoteProxy {
 
         #[derive(Deserialize)]
         struct RemoteToolRegisterItem {
-            defination: ToolDef,
+            defination: ToolDefination,
             call_url: Url,
         }
 

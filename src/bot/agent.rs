@@ -63,7 +63,8 @@ impl BotAgent {
     /// conversation history (messages[1..]).
     pub fn reload_system_prompt(&mut self, content: String) {
         self.agent
-            .replace_system_message(MessageOwned::System { content }.into());
+            .context_mut()
+            .set_system_message(MessageOwned::System { content }.into());
     }
 
     pub async fn try_respond(&mut self, chat_message: ChatMessage) -> Option<String> {
@@ -92,7 +93,7 @@ impl BotAgent {
             )
         };
 
-        self.agent.push_message(
+        self.agent.context_mut().push_message(
             MessageOwned::User {
                 content: chat_message.into_prompt_text(),
             }

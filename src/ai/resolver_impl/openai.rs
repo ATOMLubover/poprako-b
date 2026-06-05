@@ -34,7 +34,7 @@ impl OpenAiResolver {
         }
     }
 
-    fn map_tool(tool: &crate::ai::resolver::tool::ToolDef) -> OxTool {
+    fn map_tool(tool: &crate::ai::resolver::tool::ToolDefination) -> OxTool {
         OxTool::function(&tool.name, &tool.description, tool.parameters.to_value())
     }
 

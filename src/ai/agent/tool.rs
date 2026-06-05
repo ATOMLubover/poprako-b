@@ -1,5 +1,5 @@
 use crate::ai::agent::tool::result::ExecutionResult;
-use crate::ai::resolver::tool::ToolDef;
+use crate::ai::resolver::tool::ToolDefination;
 
 pub mod local;
 pub mod remote;
@@ -9,7 +9,7 @@ pub mod remote;
 #[async_trait::async_trait]
 pub trait ITool {
     /// Returns the definition of the tool, including its name, description, and parameters.
-    fn defination(&self) -> ToolDef;
+    fn defination(&self) -> ToolDefination;
 
     /// Executes the tool with the given arguments, and returns the result as a string.
     async fn execute(&mut self, args: &str) -> ExecutionResult;
