@@ -17,25 +17,33 @@ pub enum ToolInterceptorFlow {
 }
 
 #[async_trait::async_trait]
-pub trait Interceptor<M>: Send
+pub trait Interceptor<S, M, A>: Send
 where
+    S: Send + Sync + 'static,
     M: IMessage + Send + Sync + 'static,
+    A: Send + Sync + 'static,
 {
-    async fn before_solve(&mut self, _cx: &mut Context<M>) -> InterceptorFlow {
+    async fn before_solve(&mut self, _state: &mut S, _cx: &mut Context<M, A>) -> InterceptorFlow {
         InterceptorFlow::Continue
     }
 
-    async fn before_loop(&mut self, _cx: &mut Context<M>, _loop_index: usize) -> InterceptorFlow {
+    async fn before_loop(
+        &mut self,
+        _state: &mut S,
+        _cx: &mut Context<M, A>,
+        _loop_index: usize,
+    ) -> InterceptorFlow {
         InterceptorFlow::Continue
     }
 
-    async fn before_resolve(&mut self, _cx: &mut Context<M>) -> InterceptorFlow {
+    async fn before_resolve(&mut self, _state: &mut S, _cx: &mut Context<M, A>) -> InterceptorFlow {
         InterceptorFlow::Continue
     }
 
     async fn after_resolve(
         &mut self,
-        _cx: &mut Context<M>,
+        _state: &mut S,
+        _cx: &mut Context<M, A>,
         _action: &mut Action<M::ToolCall>,
     ) -> InterceptorFlow {
         InterceptorFlow::Continue
@@ -43,7 +51,8 @@ where
 
     async fn before_tool_call(
         &mut self,
-        _cx: &mut Context<M>,
+        _state: &mut S,
+        _cx: &mut Context<M, A>,
         _call: &M::ToolCall,
     ) -> ToolInterceptorFlow {
         ToolInterceptorFlow::Continue
@@ -51,7 +60,8 @@ where
 
     async fn after_tool_call(
         &mut self,
-        _cx: &mut Context<M>,
+        _state: &mut S,
+        _cx: &mut Context<M, A>,
         _call: &M::ToolCall,
         _result: &mut CallResult,
     ) -> InterceptorFlow {
@@ -60,38 +70,49 @@ where
 
     async fn before_commit_messages(
         &mut self,
-        _cx: &mut Context<M>,
+        _state: &mut S,
+        _cx: &mut Context<M, A>,
         _action: &mut Action<M::ToolCall>,
         _tool_messages: &mut Vec<M>,
     ) -> InterceptorFlow {
         InterceptorFlow::Continue
     }
 
-    async fn after_loop(&mut self, _cx: &mut Context<M>, _loop_index: usize) -> InterceptorFlow {
+    async fn after_loop(
+        &mut self,
+        _state: &mut S,
+        _cx: &mut Context<M, A>,
+        _loop_index: usize,
+    ) -> InterceptorFlow {
         InterceptorFlow::Continue
     }
 
     async fn after_solve(
         &mut self,
-        _cx: &mut Context<M>,
+        _state: &mut S,
+        _cx: &mut Context<M, A>,
         _output: &mut Option<String>,
     ) -> InterceptorFlow {
         InterceptorFlow::Continue
     }
 }
 
-pub type DynInterceptor<M> = Box<dyn Interceptor<M>>;
+pub type DynInterceptor<S, M, A> = Box<dyn Interceptor<S, M, A>>;
 
-pub struct InterceptorRegistry<M>
+pub struct InterceptorRegistry<S, M, A>
 where
+    S: Send + Sync + 'static,
     M: IMessage + Send + Sync + 'static,
+    A: Send + Sync + 'static,
 {
-    interceptors: Vec<DynInterceptor<M>>,
+    interceptors: Vec<DynInterceptor<S, M, A>>,
 }
 
-impl<M> InterceptorRegistry<M>
+impl<S, M, A> InterceptorRegistry<S, M, A>
 where
+    S: Send + Sync + 'static,
     M: IMessage + Send + Sync + 'static,
+    A: Send + Sync + 'static,
 {
     pub fn new() -> Self {
         Self {
@@ -101,18 +122,18 @@ where
 
     pub fn push<I>(&mut self, interceptor: I)
     where
-        I: Interceptor<M> + 'static,
+        I: Interceptor<S, M, A> + 'static,
     {
         self.interceptors.push(Box::new(interceptor));
     }
 
-    pub fn set(&mut self, interceptors: Vec<DynInterceptor<M>>) {
+    pub fn set(&mut self, interceptors: Vec<DynInterceptor<S, M, A>>) {
         self.interceptors = interceptors;
     }
 
-    pub async fn before_solve(&mut self, cx: &mut Context<M>) -> InterceptorFlow {
+    pub async fn before_solve(&mut self, state: &mut S, cx: &mut Context<M, A>) -> InterceptorFlow {
         for interceptor in &mut self.interceptors {
-            let flow = interceptor.before_solve(cx).await;
+            let flow = interceptor.before_solve(state, cx).await;
             if flow != InterceptorFlow::Continue {
                 return flow;
             }
@@ -121,9 +142,14 @@ where
         InterceptorFlow::Continue
     }
 
-    pub async fn before_loop(&mut self, cx: &mut Context<M>, loop_index: usize) -> InterceptorFlow {
+    pub async fn before_loop(
+        &mut self,
+        state: &mut S,
+        cx: &mut Context<M, A>,
+        loop_index: usize,
+    ) -> InterceptorFlow {
         for interceptor in &mut self.interceptors {
-            let flow = interceptor.before_loop(cx, loop_index).await;
+            let flow = interceptor.before_loop(state, cx, loop_index).await;
             if flow != InterceptorFlow::Continue {
                 return flow;
             }
@@ -132,9 +158,13 @@ where
         InterceptorFlow::Continue
     }
 
-    pub async fn before_resolve(&mut self, cx: &mut Context<M>) -> InterceptorFlow {
+    pub async fn before_resolve(
+        &mut self,
+        state: &mut S,
+        cx: &mut Context<M, A>,
+    ) -> InterceptorFlow {
         for interceptor in &mut self.interceptors {
-            let flow = interceptor.before_resolve(cx).await;
+            let flow = interceptor.before_resolve(state, cx).await;
             if flow != InterceptorFlow::Continue {
                 return flow;
             }
@@ -145,11 +175,12 @@ where
 
     pub async fn after_resolve(
         &mut self,
-        cx: &mut Context<M>,
+        state: &mut S,
+        cx: &mut Context<M, A>,
         action: &mut Action<M::ToolCall>,
     ) -> InterceptorFlow {
         for interceptor in &mut self.interceptors {
-            let flow = interceptor.after_resolve(cx, action).await;
+            let flow = interceptor.after_resolve(state, cx, action).await;
             if flow != InterceptorFlow::Continue {
                 return flow;
             }
@@ -160,11 +191,12 @@ where
 
     pub async fn before_tool_call(
         &mut self,
-        cx: &mut Context<M>,
+        state: &mut S,
+        cx: &mut Context<M, A>,
         call: &M::ToolCall,
     ) -> ToolInterceptorFlow {
         for interceptor in &mut self.interceptors {
-            let flow = interceptor.before_tool_call(cx, call).await;
+            let flow = interceptor.before_tool_call(state, cx, call).await;
             if flow != ToolInterceptorFlow::Continue {
                 return flow;
             }
@@ -175,12 +207,13 @@ where
 
     pub async fn after_tool_call(
         &mut self,
-        cx: &mut Context<M>,
+        state: &mut S,
+        cx: &mut Context<M, A>,
         call: &M::ToolCall,
         result: &mut CallResult,
     ) -> InterceptorFlow {
         for interceptor in &mut self.interceptors {
-            let flow = interceptor.after_tool_call(cx, call, result).await;
+            let flow = interceptor.after_tool_call(state, cx, call, result).await;
             if flow != InterceptorFlow::Continue {
                 return flow;
             }
@@ -191,13 +224,14 @@ where
 
     pub async fn before_commit_messages(
         &mut self,
-        cx: &mut Context<M>,
+        state: &mut S,
+        cx: &mut Context<M, A>,
         action: &mut Action<M::ToolCall>,
         tool_messages: &mut Vec<M>,
     ) -> InterceptorFlow {
         for interceptor in &mut self.interceptors {
             let flow = interceptor
-                .before_commit_messages(cx, action, tool_messages)
+                .before_commit_messages(state, cx, action, tool_messages)
                 .await;
             if flow != InterceptorFlow::Continue {
                 return flow;
@@ -207,9 +241,14 @@ where
         InterceptorFlow::Continue
     }
 
-    pub async fn after_loop(&mut self, cx: &mut Context<M>, loop_index: usize) -> InterceptorFlow {
+    pub async fn after_loop(
+        &mut self,
+        state: &mut S,
+        cx: &mut Context<M, A>,
+        loop_index: usize,
+    ) -> InterceptorFlow {
         for interceptor in &mut self.interceptors {
-            let flow = interceptor.after_loop(cx, loop_index).await;
+            let flow = interceptor.after_loop(state, cx, loop_index).await;
             if flow != InterceptorFlow::Continue {
                 return flow;
             }
@@ -220,16 +259,28 @@ where
 
     pub async fn after_solve(
         &mut self,
-        cx: &mut Context<M>,
+        state: &mut S,
+        cx: &mut Context<M, A>,
         output: &mut Option<String>,
     ) -> InterceptorFlow {
         for interceptor in &mut self.interceptors {
-            let flow = interceptor.after_solve(cx, output).await;
+            let flow = interceptor.after_solve(state, cx, output).await;
             if flow != InterceptorFlow::Continue {
                 return flow;
             }
         }
 
         InterceptorFlow::Continue
+    }
+}
+
+impl<S, M, A> Default for InterceptorRegistry<S, M, A>
+where
+    S: Send + Sync + 'static,
+    M: IMessage + Send + Sync + 'static,
+    A: Send + Sync + 'static,
+{
+    fn default() -> Self {
+        Self::new()
     }
 }

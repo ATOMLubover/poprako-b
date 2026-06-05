@@ -23,10 +23,12 @@ pub trait IContextSnapshotCodec<M>: IMessageSnapshotCodec<M>
 where
     M: IMessage + 'static,
 {
-    fn encode_context(&self, context: &Context<M>) -> anyhow::Result<ContextSnapshot> {
+    fn encode_context<A>(&self, context: &Context<M, A>) -> anyhow::Result<ContextSnapshot>
+    where
+        A: 'static,
+    {
         let messages = context
             .messages()
-            .iter()
             .map(|message| self.encode_message(message))
             .collect::<anyhow::Result<Vec<_>>>()?;
 
@@ -196,7 +198,7 @@ mod tests {
     #[test]
     fn openai_context_snapshot_excludes_tool_defs() {
         let codec = OpenAiCodec;
-        let context = ContextBuilder::new("deepseek-v4-flash")
+        let context: Context<ChatCompletionMessageParam> = ContextBuilder::new("deepseek-v4-flash")
             .messages(vec![
                 ChatCompletionMessageParam::System {
                     content: "system".to_string(),

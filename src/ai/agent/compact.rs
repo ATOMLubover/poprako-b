@@ -1,9 +1,9 @@
 use crate::ai::resolver::context::Context;
 use crate::ai::resolver::message::{IMessage, MessageRole};
 
-pub type Compact<M> = fn(&mut Context<M>);
+pub type Compact<S, M, A> = fn(&mut S, &mut Context<M, A>);
 
-pub fn sliding_window_compact<M>(cx: &mut Context<M>)
+pub fn sliding_window_compact<S, M, A>(_state: &mut S, cx: &mut Context<M, A>)
 where
     M: IMessage + 'static,
 {
@@ -12,7 +12,7 @@ where
     const MAX_MESSAGES: usize = 80;
     const RESERVE_MESSAGES: usize = 50;
 
-    let len = if let len = cx.messages().len()
+    let len = if let len = cx.message_count()
         && len > MAX_MESSAGES
     {
         len
@@ -20,7 +20,7 @@ where
         return;
     };
 
-    let mut messages = cx.take_messages();
+    let mut messages = cx.take_annotated_messages();
 
     // Reserve only the latest RESERVE_MESSAGES messages, and drop the rest.
     // NOTE: First message(system prompt) is always reserved,
@@ -31,7 +31,7 @@ where
     let user_first = messages
         .iter()
         .skip(1)
-        .position(|m| m.role() == MessageRole::User)
+        .position(|m| m.message.role() == MessageRole::User)
         .map(|i| i + 1);
 
     if let Some(i) = user_first
@@ -40,5 +40,5 @@ where
         messages.drain(1..i);
     }
 
-    cx.set_messages(messages);
+    cx.set_annotated_messages(messages);
 }

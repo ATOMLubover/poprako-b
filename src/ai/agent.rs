@@ -22,30 +22,37 @@ pub mod compact;
 pub mod interceptor;
 pub mod tool;
 
-pub struct Agent<M, R>
+pub struct Agent<S, M, R, A = ()>
 where
+    S: Send + Sync + 'static,
     M: IMessage + Send + Sync + 'static,
     R: IResolver<Message = M> + Send,
+    A: Default + Send + Sync + 'static,
 {
-    context: Context<M>,
+    state: S,
+
+    context: Context<M, A>,
 
     local_tools: HashMap<String, DynTool>,
     remote_proxy: Option<RemoteProxy>,
 
     resolver: R,
 
-    compact: Option<Compact<M>>,
+    compact: Option<Compact<S, M, A>>,
 
-    interceptor_registry: InterceptorRegistry<M>,
+    interceptor_registry: InterceptorRegistry<S, M, A>,
 }
 
-impl<M, R> Agent<M, R>
+impl<S, M, R, A> Agent<S, M, R, A>
 where
+    S: Send + Sync + 'static,
     M: IMessage + Send + Sync + 'static,
     R: IResolver<Message = M> + Send,
+    A: Default + Send + Sync + 'static,
 {
-    pub fn from_context(cx: Context<M>, resolver: R) -> Self {
+    pub fn from_context(state: S, cx: Context<M, A>, resolver: R) -> Self {
         Self {
+            state,
             context: cx,
             local_tools: HashMap::new(),
             remote_proxy: None,
@@ -55,7 +62,7 @@ where
         }
     }
 
-    pub fn set_tools(&mut self, tools: Vec<DynTool>) {
+    pub fn rebuild_tools(&mut self, tools: Vec<DynTool>) {
         self.local_tools.clear();
 
         for tool in tools.into_iter() {
@@ -66,26 +73,30 @@ where
         self.refresh_tools();
     }
 
-    pub fn context(&self) -> &Context<M> {
+    pub fn state(&self) -> &S {
+        &self.state
+    }
+
+    pub fn state_mut(&mut self) -> &mut S {
+        &mut self.state
+    }
+
+    pub fn context(&self) -> &Context<M, A> {
         &self.context
     }
 
-    pub fn context_mut(&mut self) -> &mut Context<M> {
+    pub fn context_mut(&mut self) -> &mut Context<M, A> {
         &mut self.context
-    }
-
-    pub fn set_compact(&mut self, compact: Compact<M>) {
-        self.compact = Some(compact);
     }
 
     pub fn push_interceptor<I>(&mut self, interceptor: I)
     where
-        I: Interceptor<M> + 'static,
+        I: Interceptor<S, M, A> + 'static,
     {
         self.interceptor_registry.push(interceptor);
     }
 
-    pub fn set_interceptors(&mut self, interceptors: Vec<DynInterceptor<M>>) {
+    pub fn rebuild_interceptors(&mut self, interceptors: Vec<DynInterceptor<S, M, A>>) {
         self.interceptor_registry.set(interceptors);
     }
 
@@ -108,7 +119,7 @@ where
     pub async fn solve(&mut self) -> Option<String> {
         if let InterceptorFlow::Stop { output } = self
             .interceptor_registry
-            .before_solve(&mut self.context)
+            .before_solve(&mut self.state, &mut self.context)
             .await
         {
             return self.finish_solve(output).await;
@@ -119,7 +130,7 @@ where
         loop {
             if let InterceptorFlow::Stop { output } = self
                 .interceptor_registry
-                .before_loop(&mut self.context, loop_index)
+                .before_loop(&mut self.state, &mut self.context, loop_index)
                 .await
             {
                 return self.finish_solve(output).await;
@@ -127,7 +138,7 @@ where
 
             if let InterceptorFlow::Stop { output } = self
                 .interceptor_registry
-                .before_resolve(&mut self.context)
+                .before_resolve(&mut self.state, &mut self.context)
                 .await
             {
                 return self.finish_solve(output).await;
@@ -147,7 +158,7 @@ where
             let mut action = action;
             if let InterceptorFlow::Stop { output } = self
                 .interceptor_registry
-                .after_resolve(&mut self.context, &mut action)
+                .after_resolve(&mut self.state, &mut self.context, &mut action)
                 .await
             {
                 return self.finish_solve(output).await;
@@ -161,7 +172,7 @@ where
                     for call in calls {
                         let mut result = match self
                             .interceptor_registry
-                            .before_tool_call(&mut self.context, call)
+                            .before_tool_call(&mut self.state, &mut self.context, call)
                             .await
                         {
                             ToolInterceptorFlow::Continue => self.handle_call(call).await,
@@ -175,7 +186,7 @@ where
 
                         if let InterceptorFlow::Stop { output } = self
                             .interceptor_registry
-                            .after_tool_call(&mut self.context, call, &mut result)
+                            .after_tool_call(&mut self.state, &mut self.context, call, &mut result)
                             .await
                         {
                             return self.finish_solve(output).await;
@@ -205,7 +216,12 @@ where
             let mut tool_messages = tool_messages;
             if let InterceptorFlow::Stop { output } = self
                 .interceptor_registry
-                .before_commit_messages(&mut self.context, &mut action, &mut tool_messages)
+                .before_commit_messages(
+                    &mut self.state,
+                    &mut self.context,
+                    &mut action,
+                    &mut tool_messages,
+                )
                 .await
             {
                 return self.finish_solve(output).await;
@@ -228,7 +244,7 @@ where
 
             if let InterceptorFlow::Stop { output } = self
                 .interceptor_registry
-                .after_loop(&mut self.context, loop_index)
+                .after_loop(&mut self.state, &mut self.context, loop_index)
                 .await
             {
                 return self.finish_solve(output).await;
@@ -247,7 +263,7 @@ where
 
     pub fn compact(&mut self) {
         if let Some(compact) = self.compact {
-            compact(&mut self.context);
+            compact(&mut self.state, &mut self.context);
         }
     }
 
@@ -272,7 +288,7 @@ where
     async fn finish_solve(&mut self, mut output: Option<String>) -> Option<String> {
         match self
             .interceptor_registry
-            .after_solve(&mut self.context, &mut output)
+            .after_solve(&mut self.state, &mut self.context, &mut output)
             .await
         {
             InterceptorFlow::Continue => output,
@@ -305,26 +321,44 @@ where
     }
 }
 
-pub struct AgentBuilder<M, R>
+pub struct AgentBuilder<S, M, R, A = ()>
 where
+    S: Send + Sync + 'static,
     M: IMessage + Send + Sync + 'static,
     R: IResolver<Message = M> + Send,
+    A: Default + Send + Sync + 'static,
 {
-    context: Context<M>,
+    state: S,
+    context: Context<M, A>,
     resolver: R,
     tools: Vec<DynTool>,
     remote_proxy: Option<RemoteProxy>,
-    compact: Option<Compact<M>>,
-    interceptors: Vec<DynInterceptor<M>>,
+    compact: Option<Compact<S, M, A>>,
+    interceptors: Vec<DynInterceptor<S, M, A>>,
 }
 
-impl<M, R> AgentBuilder<M, R>
+impl<S, M, R, A> AgentBuilder<S, M, R, A>
 where
+    S: Default + Send + Sync + 'static,
     M: IMessage + Send + Sync + 'static,
     R: IResolver<Message = M> + Send,
+    A: Default + Send + Sync + 'static,
 {
-    pub fn new(context: Context<M>, resolver: R) -> Self {
+    pub fn new(context: Context<M, A>, resolver: R) -> Self {
+        Self::new_with_state(S::default(), context, resolver)
+    }
+}
+
+impl<S, M, R, A> AgentBuilder<S, M, R, A>
+where
+    S: Send + Sync + 'static,
+    M: IMessage + Send + Sync + 'static,
+    R: IResolver<Message = M> + Send,
+    A: Default + Send + Sync + 'static,
+{
+    pub fn new_with_state(state: S, context: Context<M, A>, resolver: R) -> Self {
         Self {
+            state,
             context,
             resolver,
             tools: Vec::new(),
@@ -339,7 +373,7 @@ where
         self
     }
 
-    pub fn compact(mut self, compact: Compact<M>) -> Self {
+    pub fn compact(mut self, compact: Compact<S, M, A>) -> Self {
         self.compact = Some(compact);
         self
     }
@@ -351,24 +385,24 @@ where
 
     pub fn interceptor<I>(mut self, interceptor: I) -> Self
     where
-        I: Interceptor<M> + 'static,
+        I: Interceptor<S, M, A> + 'static,
     {
         self.interceptors.push(Box::new(interceptor));
         self
     }
 
-    pub fn interceptors(mut self, interceptors: Vec<DynInterceptor<M>>) -> Self {
+    pub fn interceptors(mut self, interceptors: Vec<DynInterceptor<S, M, A>>) -> Self {
         self.interceptors = interceptors;
         self
     }
 
-    pub fn build(self) -> Agent<M, R> {
-        let mut agent = Agent::from_context(self.context, self.resolver);
+    pub fn build(self) -> Agent<S, M, R, A> {
+        let mut agent = Agent::from_context(self.state, self.context, self.resolver);
 
         agent.compact = self.compact;
         agent.remote_proxy = self.remote_proxy;
-        agent.set_interceptors(self.interceptors);
-        agent.set_tools(self.tools);
+        agent.rebuild_interceptors(self.interceptors);
+        agent.rebuild_tools(self.tools);
 
         agent
     }
@@ -385,6 +419,7 @@ mod tests {
 
     use crate::ai::agent::interceptor::InterceptorFlow;
     use crate::ai::agent::tool::local::fs::{CreateFileTool, ReadFileTool};
+    use crate::ai::resolver::context::AnnotatedMessage;
     use crate::ai::resolver::context::ContextBuilder;
     use crate::ai::resolver::result::ResolveResult;
     use crate::ai::resolver_impl::openai::OpenAiResolver;
@@ -402,10 +437,13 @@ mod tests {
     impl IResolver for CountingResolver {
         type Message = ChatCompletionMessageParam;
 
-        async fn resolve(
+        async fn resolve<A>(
             &mut self,
-            _cx: &Context<Self::Message>,
-        ) -> ResolveResult<crate::ai::resolver::action::Action<OxToolCall>> {
+            _cx: &Context<Self::Message, A>,
+        ) -> ResolveResult<crate::ai::resolver::action::Action<OxToolCall>>
+        where
+            A: Send + Sync + 'static,
+        {
             self.calls.fetch_add(1, Ordering::SeqCst);
 
             Ok(crate::ai::resolver::action::Action {
@@ -420,9 +458,12 @@ mod tests {
     struct StopBeforeSolve;
 
     #[async_trait::async_trait]
-    impl crate::ai::agent::interceptor::Interceptor<ChatCompletionMessageParam> for StopBeforeSolve {
+    impl crate::ai::agent::interceptor::Interceptor<(), ChatCompletionMessageParam, ()>
+        for StopBeforeSolve
+    {
         async fn before_solve(
             &mut self,
+            _state: &mut (),
             _cx: &mut Context<ChatCompletionMessageParam>,
         ) -> InterceptorFlow {
             InterceptorFlow::Stop {
@@ -434,9 +475,12 @@ mod tests {
     struct RewriteOutput;
 
     #[async_trait::async_trait]
-    impl crate::ai::agent::interceptor::Interceptor<ChatCompletionMessageParam> for RewriteOutput {
+    impl crate::ai::agent::interceptor::Interceptor<(), ChatCompletionMessageParam, ()>
+        for RewriteOutput
+    {
         async fn after_resolve(
             &mut self,
+            _state: &mut (),
             _cx: &mut Context<ChatCompletionMessageParam>,
             action: &mut crate::ai::resolver::action::Action<OxToolCall>,
         ) -> InterceptorFlow {
@@ -446,10 +490,33 @@ mod tests {
 
         async fn after_solve(
             &mut self,
+            _state: &mut (),
             _cx: &mut Context<ChatCompletionMessageParam>,
             output: &mut Option<String>,
         ) -> InterceptorFlow {
             *output = output.take().map(|text| format!("{}!", text));
+            InterceptorFlow::Continue
+        }
+    }
+
+    #[derive(Default)]
+    struct TestState {
+        after_solve_count: usize,
+    }
+
+    struct CountAfterSolve;
+
+    #[async_trait::async_trait]
+    impl crate::ai::agent::interceptor::Interceptor<TestState, ChatCompletionMessageParam, ()>
+        for CountAfterSolve
+    {
+        async fn after_solve(
+            &mut self,
+            state: &mut TestState,
+            _cx: &mut Context<ChatCompletionMessageParam>,
+            _output: &mut Option<String>,
+        ) -> InterceptorFlow {
+            state.after_solve_count += 1;
             InterceptorFlow::Continue
         }
     }
@@ -463,7 +530,7 @@ mod tests {
         };
         let cx = ContextBuilder::new("test-model").build();
 
-        let mut agent = AgentBuilder::new(cx, resolver)
+        let mut agent = AgentBuilder::<(), _, _, ()>::new(cx, resolver)
             .interceptor(StopBeforeSolve)
             .build();
 
@@ -482,7 +549,7 @@ mod tests {
         };
         let cx = ContextBuilder::new("test-model").build();
 
-        let mut agent = AgentBuilder::new(cx, resolver)
+        let mut agent = AgentBuilder::<(), _, _, ()>::new(cx, resolver)
             .interceptor(RewriteOutput)
             .build();
 
@@ -490,6 +557,50 @@ mod tests {
 
         assert_eq!(result.as_deref(), Some("rewritten!"));
         assert_eq!(calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn interceptor_can_mutate_agent_state() {
+        let resolver = CountingResolver {
+            calls: Arc::new(AtomicUsize::new(0)),
+            content: "done".to_string(),
+        };
+        let cx = ContextBuilder::new("test-model").build();
+
+        let mut agent = AgentBuilder::new_with_state(TestState::default(), cx, resolver)
+            .interceptor(CountAfterSolve)
+            .build();
+
+        let result = agent.solve().await;
+
+        assert_eq!(result.as_deref(), Some("done"));
+        assert_eq!(agent.state().after_solve_count, 1);
+    }
+
+    #[test]
+    fn compact_keeps_annotations_attached_to_messages() {
+        let system = ChatCompletionMessageParam::System {
+            content: "system".to_string(),
+            name: None,
+        };
+        let messages = std::iter::once(AnnotatedMessage::new(system, "system".to_string()))
+            .chain((0..90).map(|index| {
+                let message = ChatCompletionMessageParam::User {
+                    content: UserContent::Text(format!("message {}", index)),
+                    name: None,
+                };
+                AnnotatedMessage::new(message, format!("annotation {}", index))
+            }))
+            .collect();
+        let mut state = ();
+        let mut cx = ContextBuilder::new("test-model")
+            .annotated_messages(messages)
+            .build();
+
+        crate::ai::agent::compact::sliding_window_compact(&mut state, &mut cx);
+
+        assert_eq!(cx.message_count(), 51);
+        assert_eq!(cx.annotated_messages()[1].annotation, "annotation 40");
     }
 
     #[tokio::test]
@@ -508,7 +619,7 @@ mod tests {
 
         let resolver = OpenAiResolver::from_env();
 
-        let cx = ContextBuilder::new("deepseek-v4-flash")
+        let cx: Context<ChatCompletionMessageParam> = ContextBuilder::new("deepseek-v4-flash")
             .messages(vec![
                 ChatCompletionMessageParam::System {
                     content:
@@ -530,7 +641,7 @@ mod tests {
             ])
             .build();
 
-        let mut agent = AgentBuilder::new(cx, resolver)
+        let mut agent = AgentBuilder::<(), _, _, ()>::new(cx, resolver)
             .tools(vec![
                 Box::new(CreateFileTool::new(output_dir.clone())),
                 Box::new(ReadFileTool::new(output_dir)),

@@ -246,10 +246,12 @@ async fn send_message(
     let snapshot = snapshot_for_session(&state, session_id).await?;
     let mut agent = build_agent(snapshot).map_err(ApiError::internal)?;
 
-    agent.context_mut().push_message(ChatCompletionMessageParam::User {
-        content: UserContent::Text(input.content),
-        name: None,
-    });
+    agent
+        .context_mut()
+        .push_message(ChatCompletionMessageParam::User {
+            content: UserContent::Text(input.content),
+            name: None,
+        });
 
     let before_snapshot = state
         .manager

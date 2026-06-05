@@ -100,9 +100,15 @@ impl IResolver for OpenAiResolver {
     type Message = ChatCompletionMessageParam;
 
     #[instrument(skip(self, cx), fields(model = %cx.model()), level = Level::INFO)]
-    async fn resolve(&mut self, cx: &Context<Self::Message>) -> ResolveResult<Action<OxToolCall>> {
-        let mut request =
-            ChatCompletionRequest::new(cx.model().to_string(), cx.messages().to_vec());
+    async fn resolve<A>(
+        &mut self,
+        cx: &Context<Self::Message, A>,
+    ) -> ResolveResult<Action<OxToolCall>>
+    where
+        A: Send + Sync + 'static,
+    {
+        let messages: Vec<ChatCompletionMessageParam> = cx.messages().cloned().collect();
+        let mut request = ChatCompletionRequest::new(cx.model().to_string(), messages);
 
         let tools = cx.tool_defs();
         if !tools.is_empty() {

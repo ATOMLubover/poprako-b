@@ -108,14 +108,16 @@ where
             .await
     }
 
-    pub async fn checkpoint_before_solution<R>(
+    pub async fn checkpoint_before_solution<AS, R, A>(
         &self,
         session_id: Uuid,
-        agent: &Agent<M, R>,
+        agent: &Agent<AS, M, R, A>,
     ) -> anyhow::Result<Checkpoint>
     where
+        AS: Send + Sync + 'static,
         M: Send + Sync,
         R: IResolver<Message = M> + Send,
+        A: Default + Send + Sync + 'static,
     {
         let solution_id = Uuid::new_v4();
         self.create_agent_checkpoint(
@@ -127,15 +129,17 @@ where
         .await
     }
 
-    pub async fn checkpoint_after_solution<R>(
+    pub async fn checkpoint_after_solution<AS, R, A>(
         &self,
         session_id: Uuid,
         solution_id: Uuid,
-        agent: &Agent<M, R>,
+        agent: &Agent<AS, M, R, A>,
     ) -> anyhow::Result<Checkpoint>
     where
+        AS: Send + Sync + 'static,
         M: Send + Sync,
         R: IResolver<Message = M> + Send,
+        A: Default + Send + Sync + 'static,
     {
         self.create_agent_checkpoint(
             session_id,
@@ -147,10 +151,15 @@ where
     }
 
     /// Encode agent context into a `ContextSnapshot` via the codec.
-    pub fn encode_snapshot<R>(&self, agent: &Agent<M, R>) -> anyhow::Result<ContextSnapshot>
+    pub fn encode_snapshot<AS, R, A>(
+        &self,
+        agent: &Agent<AS, M, R, A>,
+    ) -> anyhow::Result<ContextSnapshot>
     where
+        AS: Send + Sync + 'static,
         M: Send + Sync,
         R: IResolver<Message = M> + Send,
+        A: Default + Send + Sync + 'static,
     {
         self.codec.encode_context(agent.context())
     }
@@ -160,16 +169,18 @@ where
         self.codec.decode_context(snapshot)
     }
 
-    async fn create_agent_checkpoint<R>(
+    async fn create_agent_checkpoint<AS, R, A>(
         &self,
         session_id: Uuid,
         solution_id: Option<Uuid>,
         kind: CheckpointKind,
-        agent: &Agent<M, R>,
+        agent: &Agent<AS, M, R, A>,
     ) -> anyhow::Result<Checkpoint>
     where
+        AS: Send + Sync + 'static,
         M: Send + Sync,
         R: IResolver<Message = M> + Send,
+        A: Default + Send + Sync + 'static,
     {
         let snapshot = self.encode_snapshot(agent)?;
         self.store
@@ -225,10 +236,13 @@ mod tests {
     impl IResolver for FakeResolver {
         type Message = ChatCompletionMessageParam;
 
-        async fn resolve(
+        async fn resolve<A>(
             &mut self,
-            _cx: &Context<Self::Message>,
-        ) -> ResolveResult<Action<<Self::Message as IMessage>::ToolCall>> {
+            _cx: &Context<Self::Message, A>,
+        ) -> ResolveResult<Action<<Self::Message as IMessage>::ToolCall>>
+        where
+            A: Send + Sync + 'static,
+        {
             Ok(Action {
                 reason: Reason::Finish,
                 content: Some("done".to_string()),
@@ -433,7 +447,7 @@ mod tests {
         }
     }
 
-    fn test_agent() -> Agent<ChatCompletionMessageParam, FakeResolver> {
+    fn test_agent() -> Agent<(), ChatCompletionMessageParam, FakeResolver> {
         let context = ContextBuilder::new("deepseek-v4-flash")
             .messages(vec![
                 ChatCompletionMessageParam::System {
@@ -492,7 +506,7 @@ mod tests {
         assert_eq!(ctx.snapshot.model, "deepseek-v4-flash");
         assert_eq!(ctx.snapshot.messages.len(), 2);
         assert_eq!(restored.model(), "deepseek-v4-flash");
-        assert_eq!(restored.messages().len(), 2);
+        assert_eq!(restored.message_count(), 2);
     }
 
     #[tokio::test]
