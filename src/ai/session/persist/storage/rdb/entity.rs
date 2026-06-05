@@ -12,23 +12,23 @@ use crate::ai::session::persist::data_object::hash_message;
 
 // ── Session ──────────────────────────────────────────────────────────────────
 
-pub(super) struct SessionEntity {
-    pub(super) id: Uuid,
-    pub(super) name: Option<String>,
-    pub(super) model: String,
-    pub(super) status: SessionStatus,
-    pub(super) forked_from_checkpoint_id: Option<Uuid>,
-    pub(super) created_at: DateTime<Utc>,
-    pub(super) updated_at: DateTime<Utc>,
+pub struct SessionEntity {
+    pub id: Uuid,
+    pub name: Option<String>,
+    pub model: String,
+    pub status: SessionStatus,
+    pub forked_from_checkpoint_id: Option<Uuid>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }
 
-pub(super) enum SessionStatus {
+pub enum SessionStatus {
     Active,
     Archived,
 }
 
 impl SessionStatus {
-    pub(super) fn db_value(&self) -> &'static str {
+    pub fn db_value(&self) -> &'static str {
         match self {
             Self::Active => "active",
             Self::Archived => "archived",
@@ -52,7 +52,7 @@ impl SessionStatus {
 }
 
 impl SessionEntity {
-    pub(super) fn new(input: NewSession) -> Self {
+    pub fn new(input: NewSession) -> Self {
         let now = Utc::now();
         Self {
             id: Uuid::new_v4(),
@@ -65,7 +65,7 @@ impl SessionEntity {
         }
     }
 
-    pub(super) fn from_db(
+    pub fn from_db(
         id: Uuid,
         name: Option<String>,
         model: String,
@@ -85,7 +85,7 @@ impl SessionEntity {
         })
     }
 
-    pub(super) fn into_data_object(self) -> data_object::Session {
+    pub fn into_data_object(self) -> data_object::Session {
         data_object::Session {
             id: self.id,
             name: self.name,
@@ -100,7 +100,7 @@ impl SessionEntity {
 
 // ── Stored message ───────────────────────────────────────────────────────────
 
-pub(super) fn upsert_row(message: &Message) -> (Uuid, Vec<u8>) {
+pub fn upsert_row(message: &Message) -> (Uuid, Vec<u8>) {
     let hash = hash_message(message);
     // Derive a deterministic UUID from the hash so that we always get the
     // same id for the same payload — this plays nicely with `ON CONFLICT`.
@@ -110,26 +110,26 @@ pub(super) fn upsert_row(message: &Message) -> (Uuid, Vec<u8>) {
 
 // ── Checkpoint ───────────────────────────────────────────────────────────────
 
-pub(super) struct CheckpointEntity {
-    pub(super) id: Uuid,
-    pub(super) session_id: Uuid,
-    pub(super) solution_id: Option<Uuid>,
-    pub(super) kind: CheckpointKindValue,
-    pub(super) model: String,
-    pub(super) base_checkpoint_id: Option<Uuid>,
-    pub(super) created_at: DateTime<Utc>,
+pub struct CheckpointEntity {
+    pub id: Uuid,
+    pub session_id: Uuid,
+    pub solution_id: Option<Uuid>,
+    pub kind: CheckpointKindValue,
+    pub model: String,
+    pub base_checkpoint_id: Option<Uuid>,
+    pub created_at: DateTime<Utc>,
     /// Local message refs (only the suffix beyond the base).
-    pub(super) message_refs: Vec<data_object::CheckpointMessageRef>,
+    pub message_refs: Vec<data_object::CheckpointMessageRef>,
 }
 
-pub(super) enum CheckpointKindValue {
+pub enum CheckpointKindValue {
     BeforeSolution,
     AfterSolution,
     Fork,
 }
 
 impl CheckpointKindValue {
-    pub(super) fn db_value(&self) -> &'static str {
+    pub fn db_value(&self) -> &'static str {
         match self {
             Self::BeforeSolution => "before_solution",
             Self::AfterSolution => "after_solution",
@@ -164,7 +164,7 @@ impl CheckpointKindValue {
 }
 
 impl CheckpointEntity {
-    pub(super) fn new(input: NewCheckpoint) -> Self {
+    pub fn new(input: NewCheckpoint) -> Self {
         Self {
             id: Uuid::new_v4(),
             session_id: input.session_id,
@@ -177,7 +177,7 @@ impl CheckpointEntity {
         }
     }
 
-    pub(super) fn from_db(
+    pub fn from_db(
         id: Uuid,
         session_id: Uuid,
         solution_id: Option<Uuid>,
@@ -198,7 +198,7 @@ impl CheckpointEntity {
         })
     }
 
-    pub(super) fn into_data_object(self) -> data_object::Checkpoint {
+    pub fn into_data_object(self) -> data_object::Checkpoint {
         data_object::Checkpoint {
             id: self.id,
             session_id: self.session_id,
@@ -213,9 +213,9 @@ impl CheckpointEntity {
 
 // ── Context reconstruction helpers ───────────────────────────────────────────
 
-pub(super) struct ReconstructedCheckpoint {
-    pub(super) entity: CheckpointEntity,
-    pub(super) snapshot: ContextSnapshot,
+pub struct ReconstructedCheckpoint {
+    pub entity: CheckpointEntity,
+    pub snapshot: ContextSnapshot,
 }
 
 #[cfg(test)]

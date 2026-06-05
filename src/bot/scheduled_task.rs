@@ -29,7 +29,7 @@ pub fn watch_scheduled_spam() -> anyhow::Result<mpsc::Receiver<ScheduledSpamTrig
 }
 
 fn parse_spam_channels() -> Vec<String> {
-    env::var("SPAM_GROUPS")
+    env::var("SPAM_CHANNELS")
         .unwrap_or_default()
         .split(',')
         .map(str::trim)
@@ -57,7 +57,7 @@ async fn scheduled_spam_watchdog(send: mpsc::Sender<ScheduledSpamTrigger>) {
 
     let channel_ids = parse_spam_channels();
     if channel_ids.is_empty() {
-        tracing::warn!("SPAM_GROUPS is empty, scheduled spam will only send boot notification");
+        tracing::warn!("SPAM_CHANNELS is empty, scheduled spam will only send boot message");
     } else {
         tracing::info!(
             "scheduled spam will send to {} channel(s)",
@@ -80,7 +80,7 @@ async fn scheduled_spam_watchdog(send: mpsc::Sender<ScheduledSpamTrigger>) {
         .await
         .is_err()
     {
-        tracing::warn!("scheduled spam receiver dropped before boot notification");
+        tracing::warn!("scheduled spam receiver dropped before boot message");
         return;
     }
 
@@ -110,7 +110,7 @@ async fn scheduled_spam_watchdog(send: mpsc::Sender<ScheduledSpamTrigger>) {
         sleep(wait).await;
 
         if channel_ids.is_empty() {
-            tracing::warn!("SPAM_GROUPS is empty, skipping scheduled spam");
+            tracing::warn!("SPAM_CHANNELS is empty, skipping scheduled spam");
             continue;
         }
 

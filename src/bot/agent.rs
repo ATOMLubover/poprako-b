@@ -1,8 +1,8 @@
+mod data;
 mod plugin;
 mod prompt;
 mod state;
 mod tool;
-mod value_object;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -95,7 +95,7 @@ impl BotAgent {
 
 #[cfg(test)]
 impl BotAgent {
-    pub(crate) fn new_for_test() -> Self {
+    pub fn new_for_test() -> Self {
         let resolver = OpenAiResolver::from_env();
         let context = ContextBuilder::<_, BotMessageAnnotation>::new("test-model").build();
         let agent =

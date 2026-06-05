@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use serde::Serialize;
 
-use crate::bot::agent::value_object::{Assignment, Chapter, Comic, Member, Workset};
+use crate::bot::agent::data::{Assignment, Chapter, Comic, Member, Workset};
 use crate::http::HttpClient;
 use crate::http::result::HttpError;
 

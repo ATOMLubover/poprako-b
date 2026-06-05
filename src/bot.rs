@@ -27,9 +27,9 @@ pub async fn run_server() -> anyhow::Result<()> {
     BotServer::new(BotState::new(agent, config.self_id))
         .with_onebot_from_env()?
         .on_channel_message(handle_channel_message)
-        .on_notification(watch_system_prompt, handle_system_prompt_refresh)
-        .on_notification(watch_scheduled_spam, handle_scheduled_spam_trigger)
-        .on_notification(watch_keepalive, handle_keepalive_trigger)
+        .on_notice(watch_system_prompt, handle_system_prompt_refresh)
+        .on_notice(watch_scheduled_spam, handle_scheduled_spam_trigger)
+        .on_notice(watch_keepalive, handle_keepalive_trigger)
         .serve()
         .await
 }
