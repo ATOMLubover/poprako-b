@@ -7,6 +7,7 @@ use crate::ai::resolver::IResolver;
 use crate::ai::resolver::action::{Action, Reason};
 use crate::ai::resolver::context::Context;
 use crate::ai::resolver::result::{ResolveError, ResolveResult};
+use crate::ai::resolver::tool::ToolDefination;
 use openai_oxide::types::chat::{
     ChatCompletionMessageParam, ChatCompletionRequest, FunctionCall, Tool as OxTool,
     ToolCall as OxToolCall, ToolChoice,
@@ -34,7 +35,7 @@ impl OpenAiResolver {
         }
     }
 
-    fn map_tool(tool: &crate::ai::resolver::tool::ToolDefination) -> OxTool {
+    fn map_tool(tool: &ToolDefination) -> OxTool {
         OxTool::function(&tool.name, &tool.description, tool.parameters.to_value())
     }
 

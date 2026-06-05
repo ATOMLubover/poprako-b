@@ -23,6 +23,7 @@ pub type DynCompact<M, S = (), A = ()> = Box<dyn Compact<Message = M, State = S,
 pub struct SlidingWindowCompact<M, S = (), A = ()> {
     max_messages: usize,
     reserve_messages: usize,
+    #[allow(clippy::type_complexity)]
     marker: PhantomData<fn() -> (M, S, A)>,
 }
 

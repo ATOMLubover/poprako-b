@@ -9,6 +9,7 @@ use crate::ai::resolver::message::IMessage;
 use crate::ai::resolver::message::MessageRef;
 use crate::ai::session::persist::data_object::ContextSnapshot;
 use crate::ai::session::persist::data_object::Message;
+use crate::ai::session::persist::data_object::ToolCall;
 
 pub trait IMessageSnapshotCodec<M>
 where
@@ -79,7 +80,7 @@ impl IMessageSnapshotCodec<ChatCompletionMessageParam> for OpenAiCodec {
                 tool_calls: tool_calls.as_ref().map(|calls| {
                     calls
                         .iter()
-                        .map(|call| crate::ai::session::persist::data_object::ToolCall {
+                        .map(|call| ToolCall {
                             id: call.id.clone(),
                             name: call.function.name.clone(),
                             args: call.function.arguments.clone(),

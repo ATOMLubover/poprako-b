@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::bot::agent::BotAgent;
-use crate::bot::agent::prompt::spawn_refresh_system_promt_task;
+use crate::bot::agent::spawn_refresh_system_promt_task;
 use crate::bot::handler::handle_group_message;
 use crate::bot::keepalive::spawn_keepalive_task;
 use crate::bot::message::{InputMessage, OutputMessage};

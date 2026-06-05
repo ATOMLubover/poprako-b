@@ -1,4 +1,5 @@
-pub mod prompt;
+mod prompt;
+
 mod tool;
 mod value_object;
 
@@ -15,12 +16,15 @@ use crate::ai::resolver::message::{MessageOwned, MessageRef};
 use crate::ai::resolver_impl::openai::OpenAiResolver;
 use crate::bot::agent::prompt::system_prompt;
 use crate::bot::value_object::ChatMessage;
+use crate::bot::value_object::ChatMessageMeta;
 
 pub fn memory_dir() -> PathBuf {
     std::env::var("MEMORY_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from("memory"))
 }
+
+pub use prompt::spawn_refresh_system_promt_task;
 
 const MODEL_NAME: &str = "deepseek-v4-flash";
 
@@ -50,7 +54,7 @@ impl BotAgent {
         let agent = OpenAiAgentBuilder::new(context, resolver)
             .tools(tools)
             .remote_proxy(remote_proxy)
-            .compact(Box::new(SlidingWindowCompact::default()))
+            .compact(SlidingWindowCompact::default())
             .build();
 
         Ok(Self {
@@ -80,7 +84,7 @@ impl BotAgent {
         } else {
             let meta = chat_message.meta();
             ChatMessage::new(
-                crate::bot::value_object::ChatMessageMeta::new(
+                ChatMessageMeta::new(
                     meta.group_qid(),
                     meta.group_name(),
                     meta.sender_qid(),
@@ -93,17 +97,11 @@ impl BotAgent {
             )
         };
 
-        self.agent.context_mut().push_message(
-            MessageOwned::User {
-                content: chat_message.into_prompt_text(),
-            }
-            .into(),
-        );
+        let user_message = MessageOwned::User {
+            content: chat_message.into_prompt_text(),
+        }
+        .into();
 
-        // Compact before solving to keep context within sliding window.
-        // TODO: compact AFTER solving.
-        self.agent.compact().await;
-
-        self.agent.solve().await
+        self.agent.solve(user_message).await
     }
 }

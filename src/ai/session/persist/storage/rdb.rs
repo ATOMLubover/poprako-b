@@ -121,12 +121,7 @@ async fn load_message_sequence(
     let mut current = Some(checkpoint_id);
 
     // Walk up the base chain.
-    loop {
-        let cid = match current {
-            Some(id) => id,
-            None => break,
-        };
-
+    while let Some(cid) = current {
         let row = sqlx::query!(
             r#"
             SELECT id, base_checkpoint_id

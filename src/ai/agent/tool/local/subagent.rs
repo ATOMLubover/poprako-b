@@ -193,21 +193,20 @@ async fn run_sub_agent(
             let resolver = OpenAiResolver::from_env();
 
             let cx = ContextBuilder::new(model)
-                .messages(vec![
-                    ChatCompletionMessageParam::System {
-                        content: system_prompt.to_string(),
-                        name: None,
-                    },
-                    ChatCompletionMessageParam::User {
-                        content: UserContent::Text(user_prompt.to_string()),
-                        name: None,
-                    },
-                ])
+                .messages(vec![ChatCompletionMessageParam::System {
+                    content: system_prompt.to_string(),
+                    name: None,
+                }])
                 .build();
 
             let mut agent = OpenAiAgentBuilder::new(cx, resolver).tools(tools).build();
 
-            agent.solve().await
+            agent
+                .solve(ChatCompletionMessageParam::User {
+                    content: UserContent::Text(user_prompt.to_string()),
+                    name: None,
+                })
+                .await
         }
         other => {
             tracing::warn!(model = other, "unsupported model for sub-agent");

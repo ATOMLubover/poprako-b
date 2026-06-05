@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 
-use crate::ai::agent::compact::DynCompact;
+use crate::ai::agent::compact::{Compact, DynCompact};
 use crate::ai::agent::interceptor::DynInterceptor;
 use crate::ai::agent::interceptor::Interceptor;
 use crate::ai::agent::interceptor::InterceptorFlow;
@@ -122,7 +122,10 @@ where
 
     /// Run the agent loop. Returns the final assistant text response, or `None`
     /// if the resolver failed before producing a final answer.
-    pub async fn solve(&mut self) -> Option<String> {
+    pub async fn solve(&mut self, message: M) -> Option<String> {
+        self.context.push_message(message);
+        self.compact().await;
+
         if let SolveFlow::Finish(output) = self.run_before_solve().await {
             return self.finish_solve(output).await;
         }
@@ -438,8 +441,11 @@ where
         self
     }
 
-    pub fn compact(mut self, compact: DynCompact<M, S, A>) -> Self {
-        self.compact = Some(compact);
+    pub fn compact<C>(mut self, compact: C) -> Self
+    where
+        C: Compact<Message = M, State = S, Annotation = A> + 'static,
+    {
+        self.compact = Some(Box::new(compact));
         self
     }
 
@@ -453,11 +459,6 @@ where
         I: Interceptor<S, M, A> + 'static,
     {
         self.interceptors.push(Box::new(interceptor));
-        self
-    }
-
-    pub fn interceptors(mut self, interceptors: Vec<DynInterceptor<S, M, A>>) -> Self {
-        self.interceptors = interceptors;
         self
     }
 
@@ -507,13 +508,13 @@ mod tests {
         async fn resolve<A>(
             &mut self,
             _cx: &Context<Self::Message, A>,
-        ) -> ResolveResult<crate::ai::resolver::action::Action<OxToolCall>>
+        ) -> ResolveResult<Action<OxToolCall>>
         where
             A: Send + Sync + 'static,
         {
             self.calls.fetch_add(1, Ordering::SeqCst);
 
-            Ok(crate::ai::resolver::action::Action {
+            Ok(Action {
                 reason: Reason::Finish,
                 content: Some(self.content.clone()),
                 refusal: None,
@@ -525,9 +526,7 @@ mod tests {
     struct StopBeforeSolve;
 
     #[async_trait::async_trait]
-    impl crate::ai::agent::interceptor::Interceptor<(), ChatCompletionMessageParam, ()>
-        for StopBeforeSolve
-    {
+    impl Interceptor<(), ChatCompletionMessageParam, ()> for StopBeforeSolve {
         async fn before_solve(
             &mut self,
             _state: &mut (),
@@ -542,14 +541,12 @@ mod tests {
     struct RewriteOutput;
 
     #[async_trait::async_trait]
-    impl crate::ai::agent::interceptor::Interceptor<(), ChatCompletionMessageParam, ()>
-        for RewriteOutput
-    {
+    impl Interceptor<(), ChatCompletionMessageParam, ()> for RewriteOutput {
         async fn after_resolve(
             &mut self,
             _state: &mut (),
             _cx: &mut Context<ChatCompletionMessageParam>,
-            action: &mut crate::ai::resolver::action::Action<OxToolCall>,
+            action: &mut Action<OxToolCall>,
         ) -> InterceptorFlow {
             action.content = Some("rewritten".to_string());
             InterceptorFlow::Continue
@@ -574,9 +571,7 @@ mod tests {
     struct CountAfterSolve;
 
     #[async_trait::async_trait]
-    impl crate::ai::agent::interceptor::Interceptor<TestState, ChatCompletionMessageParam, ()>
-        for CountAfterSolve
-    {
+    impl Interceptor<TestState, ChatCompletionMessageParam, ()> for CountAfterSolve {
         async fn after_solve(
             &mut self,
             state: &mut TestState,
@@ -601,7 +596,12 @@ mod tests {
             .interceptor(StopBeforeSolve)
             .build();
 
-        let result = agent.solve().await;
+        let result = agent
+            .solve(ChatCompletionMessageParam::User {
+                content: UserContent::Text("test".to_string()),
+                name: None,
+            })
+            .await;
 
         assert_eq!(result.as_deref(), Some("stopped"));
         assert_eq!(calls.load(Ordering::SeqCst), 0);
@@ -620,7 +620,12 @@ mod tests {
             .interceptor(RewriteOutput)
             .build();
 
-        let result = agent.solve().await;
+        let result = agent
+            .solve(ChatCompletionMessageParam::User {
+                content: UserContent::Text("test".to_string()),
+                name: None,
+            })
+            .await;
 
         assert_eq!(result.as_deref(), Some("rewritten!"));
         assert_eq!(calls.load(Ordering::SeqCst), 1);
@@ -638,7 +643,12 @@ mod tests {
             .interceptor(CountAfterSolve)
             .build();
 
-        let result = agent.solve().await;
+        let result = agent
+            .solve(ChatCompletionMessageParam::User {
+                content: UserContent::Text("test".to_string()),
+                name: None,
+            })
+            .await;
 
         assert_eq!(result.as_deref(), Some("done"));
         assert_eq!(agent.state().after_solve_count, 1);
@@ -687,26 +697,25 @@ mod tests {
 
         let resolver = OpenAiResolver::from_env();
 
+        let user_message = ChatCompletionMessageParam::User {
+            content: UserContent::Text(
+                "Create a file at 'hello.txt' with the content 'hello from agent', \
+                 then read it back to confirm the content."
+                    .to_string(),
+            ),
+            name: None,
+        };
+
         let cx: Context<ChatCompletionMessageParam> = ContextBuilder::new("deepseek-v4-flash")
-            .messages(vec![
-                ChatCompletionMessageParam::System {
-                    content:
-                        "You are a helpful assistant. Use the create_file tool to create files and \
-                              the read_file tool to read them. The path parameter is relative to the \
-                              base directory. When asked to create a file, use the tool directly - \
-                              do not ask for confirmation."
-                            .to_string(),
-                    name: None,
-                },
-                ChatCompletionMessageParam::User {
-                    content: UserContent::Text(
-                        "Create a file at 'hello.txt' with the content 'hello from agent', \
-                         then read it back to confirm the content."
-                            .to_string(),
-                    ),
-                    name: None,
-                },
-            ])
+            .messages(vec![ChatCompletionMessageParam::System {
+                content:
+                    "You are a helpful assistant. Use the create_file tool to create files and \
+                          the read_file tool to read them. The path parameter is relative to the \
+                          base directory. When asked to create a file, use the tool directly - \
+                          do not ask for confirmation."
+                        .to_string(),
+                name: None,
+            }])
             .build();
 
         let mut agent = AgentBuilder::<_, _, (), ()>::new(cx, resolver)
@@ -716,7 +725,7 @@ mod tests {
             ])
             .build();
 
-        let result = agent.solve().await;
+        let result = agent.solve(user_message).await;
         assert!(result.is_some(), "agent should return a final response");
         assert!(
             target_file.exists(),
