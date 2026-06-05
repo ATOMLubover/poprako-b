@@ -25,7 +25,7 @@ napcat-logs:
 # Requires: napcat-up has been run and NapCat reverse WS
 # configured to point at ws://127.0.0.1:8081/onebot/v11.
 run-bot-host:
-	cargo run --release
+	cargo run --release --bin poprako-b-preview
 
 run-bot-host-debug:
 	RUST_LOG=debug cargo run

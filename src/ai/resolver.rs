@@ -1,5 +1,3 @@
-pub mod openai;
-
 pub mod action;
 pub mod context;
 pub mod message;

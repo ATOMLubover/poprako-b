@@ -3,14 +3,14 @@ use std::path::PathBuf;
 
 use openai_oxide::types::chat::{ChatCompletionMessageParam, UserContent};
 
-use crate::ai::agent::openai::OpenAiAgentBuilder;
 use crate::ai::agent::tool::DynTool;
 use crate::ai::agent::tool::ITool;
 use crate::ai::agent::tool::local::fs::{ListFilesTool, ReadFileTool};
 use crate::ai::agent::tool::result::{ExecutionError, ExecutionResult};
+use crate::ai::agent_impl::openai::OpenAiAgentBuilder;
 use crate::ai::resolver::context::ContextBuilder;
-use crate::ai::resolver::openai::OpenAiResolver;
 use crate::ai::resolver::tool::{ParamDef, PropDef, ToolDef};
+use crate::ai::resolver_impl::openai::OpenAiResolver;
 
 pub struct RunSubagentsTool {
     default_model: String,

@@ -2,13 +2,13 @@ use chrono::DateTime;
 use chrono::Utc;
 use uuid::Uuid;
 
-use crate::ai::agent::persist::data_object;
-use crate::ai::agent::persist::data_object::CheckpointKind;
-use crate::ai::agent::persist::data_object::ContextSnapshot;
-use crate::ai::agent::persist::data_object::Message;
-use crate::ai::agent::persist::data_object::NewCheckpoint;
-use crate::ai::agent::persist::data_object::NewSession;
-use crate::ai::agent::persist::data_object::hash_message;
+use crate::ai::session::persist::data_object;
+use crate::ai::session::persist::data_object::CheckpointKind;
+use crate::ai::session::persist::data_object::ContextSnapshot;
+use crate::ai::session::persist::data_object::Message;
+use crate::ai::session::persist::data_object::NewCheckpoint;
+use crate::ai::session::persist::data_object::NewSession;
+use crate::ai::session::persist::data_object::hash_message;
 
 // ── Session ──────────────────────────────────────────────────────────────────
 
@@ -104,8 +104,7 @@ pub(super) fn upsert_row(message: &Message) -> (Uuid, Vec<u8>) {
     let hash = hash_message(message);
     // Derive a deterministic UUID from the hash so that we always get the
     // same id for the same payload — this plays nicely with `ON CONFLICT`.
-    let id = Uuid::from_slice(&hash[..16])
-        .expect("hash-derived UUID should be valid");
+    let id = Uuid::from_slice(&hash[..16]).expect("hash-derived UUID should be valid");
     (id, hash)
 }
 
@@ -240,8 +239,14 @@ mod tests {
 
     #[test]
     fn checkpoint_kind_maps_database_values() {
-        assert_eq!(CheckpointKindValue::BeforeSolution.db_value(), "before_solution");
-        assert_eq!(CheckpointKindValue::AfterSolution.db_value(), "after_solution");
+        assert_eq!(
+            CheckpointKindValue::BeforeSolution.db_value(),
+            "before_solution"
+        );
+        assert_eq!(
+            CheckpointKindValue::AfterSolution.db_value(),
+            "after_solution"
+        );
         assert_eq!(CheckpointKindValue::Fork.db_value(), "fork");
         assert!(matches!(
             CheckpointKindValue::from_db("before_solution").unwrap(),

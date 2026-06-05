@@ -8,11 +8,11 @@ use std::path::PathBuf;
 use tool::build_tools;
 
 use crate::ai::agent::compact::sliding_window_compact;
-use crate::ai::agent::openai::{OpenAiAgent, OpenAiAgentBuilder};
 use crate::ai::agent::tool::remote::RemoteProxy;
+use crate::ai::agent_impl::openai::{OpenAiAgent, OpenAiAgentBuilder};
 use crate::ai::resolver::context::ContextBuilder;
 use crate::ai::resolver::message::{MessageOwned, MessageRef};
-use crate::ai::resolver::openai::OpenAiResolver;
+use crate::ai::resolver_impl::openai::OpenAiResolver;
 use crate::bot::agent::prompt::system_prompt;
 use crate::bot::value_object::ChatMessage;
 

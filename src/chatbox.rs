@@ -20,22 +20,22 @@ use tokio::sync::Mutex;
 use tower_http::services::ServeDir;
 use uuid::Uuid;
 
-use crate::ai::agent::AgentManager;
-use crate::ai::agent::openai::OpenAiAgent;
-use crate::ai::agent::openai::OpenAiAgentBuilder;
-use crate::ai::agent::persist::codec::IContextSnapshotCodec;
-use crate::ai::agent::persist::codec::OpenAiCodec;
-use crate::ai::agent::persist::data_object::Checkpoint;
-use crate::ai::agent::persist::data_object::CheckpointKind;
-use crate::ai::agent::persist::data_object::ContextSnapshot;
-use crate::ai::agent::persist::data_object::Message;
-use crate::ai::agent::persist::data_object::NewCheckpoint;
-use crate::ai::agent::persist::data_object::Session;
-use crate::ai::agent::persist::storage::IStorage;
-use crate::ai::agent::persist::storage::rdb::RdbStorage;
-use crate::ai::resolver::openai::OpenAiResolver;
+use crate::ai::agent_impl::openai::OpenAiAgent;
+use crate::ai::agent_impl::openai::OpenAiAgentBuilder;
+use crate::ai::resolver_impl::openai::OpenAiResolver;
+use crate::ai::session::SessionManager;
+use crate::ai::session::persist::codec::IContextSnapshotCodec;
+use crate::ai::session::persist::codec::OpenAiCodec;
+use crate::ai::session::persist::data_object::Checkpoint;
+use crate::ai::session::persist::data_object::CheckpointKind;
+use crate::ai::session::persist::data_object::ContextSnapshot;
+use crate::ai::session::persist::data_object::Message;
+use crate::ai::session::persist::data_object::NewCheckpoint;
+use crate::ai::session::persist::data_object::Session;
+use crate::ai::session::persist::storage::IStorage;
+use crate::ai::session::persist::storage::rdb::RdbStorage;
 
-type Manager = AgentManager<RdbStorage, ChatCompletionMessageParam, OpenAiCodec>;
+type Manager = SessionManager<RdbStorage, ChatCompletionMessageParam, OpenAiCodec>;
 #[derive(Clone)]
 struct AppState {
     manager: Arc<Manager>,
@@ -149,15 +149,14 @@ pub async fn run() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();
 
     let storage = RdbStorage::from_env().await?;
-    let model = std::env::var("CHATBOX_MODEL")
-        .unwrap_or_else(|_| "deepseek-v4-flash".to_string());
+    let model = std::env::var("CHATBOX_MODEL").unwrap_or_else(|_| "deepseek-v4-flash".to_string());
     let addr = std::env::var("CHATBOX_ADDR")
         .unwrap_or_else(|_| "127.0.0.1:3000".to_string())
         .parse::<SocketAddr>()
         .context("CHATBOX_ADDR must be a socket address")?;
 
     let state = AppState {
-        manager: Arc::new(AgentManager::new_openai(storage)),
+        manager: Arc::new(SessionManager::new_openai(storage)),
         snapshots: Arc::new(Mutex::new(HashMap::new())),
         model,
     };
@@ -166,10 +165,22 @@ pub async fn run() -> anyhow::Result<()> {
     let app = Router::new()
         .route("/api/sessions", get(list_sessions).post(create_session))
         .route("/api/sessions/{session_id}/messages", post(send_message))
-        .route("/api/sessions/{session_id}/checkpoints", get(list_checkpoints))
-        .route("/api/sessions/{session_id}/checkout", post(checkout_session))
-        .route("/api/checkpoints/{checkpoint_id}/context", get(checkpoint_context))
-        .route("/api/checkpoints/{checkpoint_id}/fork", post(fork_checkpoint))
+        .route(
+            "/api/sessions/{session_id}/checkpoints",
+            get(list_checkpoints),
+        )
+        .route(
+            "/api/sessions/{session_id}/checkout",
+            post(checkout_session),
+        )
+        .route(
+            "/api/checkpoints/{checkpoint_id}/context",
+            get(checkpoint_context),
+        )
+        .route(
+            "/api/checkpoints/{checkpoint_id}/fork",
+            post(fork_checkpoint),
+        )
         .route("/api/debug/persist", get(debug_persist))
         .fallback_service(ServeDir::new(static_dir).append_index_html_on_directories(true))
         .with_state(state);
@@ -219,11 +230,7 @@ async fn create_session(
     )
     .await?;
 
-    state
-        .snapshots
-        .lock()
-        .await
-        .insert(session.id, snapshot);
+    state.snapshots.lock().await.insert(session.id, snapshot);
 
     Ok(Json(CreateSessionResponse {
         session,
@@ -303,7 +310,9 @@ async fn list_checkpoints(
     for checkpoint in checkpoints {
         summaries.push(checkpoint_summary(&state, checkpoint).await?);
     }
-    Ok(Json(CheckpointListResponse { checkpoints: summaries }))
+    Ok(Json(CheckpointListResponse {
+        checkpoints: summaries,
+    }))
 }
 
 async fn checkpoint_context(
@@ -347,11 +356,13 @@ async fn fork_checkpoint(
         .await
         .map_err(ApiError::internal)?;
     let agent = build_agent(context.snapshot).map_err(ApiError::internal)?;
-    state
-        .snapshots
-        .lock()
-        .await
-        .insert(session.id, state.manager.encode_snapshot(&agent).map_err(ApiError::internal)?);
+    state.snapshots.lock().await.insert(
+        session.id,
+        state
+            .manager
+            .encode_snapshot(&agent)
+            .map_err(ApiError::internal)?,
+    );
 
     Ok(Json(ForkResponse {
         session,
@@ -381,11 +392,7 @@ async fn checkout_session(
 
     let checkpoint = context.checkpoint.clone();
     let snapshot = context.snapshot;
-    state
-        .snapshots
-        .lock()
-        .await
-        .insert(session_id, snapshot);
+    state.snapshots.lock().await.insert(session_id, snapshot);
 
     Ok(Json(CheckoutResponse {
         session_id,

@@ -12,17 +12,17 @@ use entity::SessionEntity;
 use entity::SessionStatus;
 use entity::upsert_row;
 
-use crate::ai::agent::persist::data_object::Checkpoint;
-use crate::ai::agent::persist::data_object::CheckpointContext;
-use crate::ai::agent::persist::data_object::CheckpointKind;
-use crate::ai::agent::persist::data_object::CheckpointMessageRef;
-use crate::ai::agent::persist::data_object::ContextSnapshot;
-use crate::ai::agent::persist::data_object::Message;
-use crate::ai::agent::persist::data_object::NewCheckpoint;
-use crate::ai::agent::persist::data_object::NewSession;
-use crate::ai::agent::persist::data_object::PersistDiagnostics;
-use crate::ai::agent::persist::data_object::Session;
-use crate::ai::agent::persist::storage::IStorage;
+use crate::ai::session::persist::data_object::Checkpoint;
+use crate::ai::session::persist::data_object::CheckpointContext;
+use crate::ai::session::persist::data_object::CheckpointKind;
+use crate::ai::session::persist::data_object::CheckpointMessageRef;
+use crate::ai::session::persist::data_object::ContextSnapshot;
+use crate::ai::session::persist::data_object::Message;
+use crate::ai::session::persist::data_object::NewCheckpoint;
+use crate::ai::session::persist::data_object::NewSession;
+use crate::ai::session::persist::data_object::PersistDiagnostics;
+use crate::ai::session::persist::data_object::Session;
+use crate::ai::session::persist::storage::IStorage;
 
 #[derive(Clone)]
 pub struct RdbStorage {
@@ -172,10 +172,8 @@ async fn load_message_sequence(
         .await?;
 
         // Position-based: we build a vec of (pos, payload) then sort and collect.
-        let mut local: Vec<(i32, serde_json::Value)> = rows
-            .into_iter()
-            .map(|r| (r.position, r.payload))
-            .collect();
+        let mut local: Vec<(i32, serde_json::Value)> =
+            rows.into_iter().map(|r| (r.position, r.payload)).collect();
         local.sort_by_key(|(pos, _)| *pos);
 
         for (_, payload) in local {
@@ -740,8 +738,8 @@ impl IStorage for RdbStorage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ai::agent::persist::data_object::Status;
-    use crate::ai::agent::persist::data_object::ToolCall;
+    use crate::ai::session::persist::data_object::Status;
+    use crate::ai::session::persist::data_object::ToolCall;
 
     fn test_snapshot(_model: &str) -> Vec<Message> {
         vec![
@@ -1002,10 +1000,7 @@ mod tests {
             .unwrap();
 
         let (fork, fork_checkpoint) = storage
-            .fork_session_from_checkpoint(
-                parent_checkpoint.id,
-                Some(format!("{}fork", prefix)),
-            )
+            .fork_session_from_checkpoint(parent_checkpoint.id, Some(format!("{}fork", prefix)))
             .await
             .unwrap();
         let loaded_fork = storage.get_session(fork.id).await.unwrap();
@@ -1044,7 +1039,10 @@ mod tests {
         .fetch_one(storage.pool())
         .await
         .unwrap();
-        assert_eq!(fork_msg_count, 0, "fork should have zero local message refs");
+        assert_eq!(
+            fork_msg_count, 0,
+            "fork should have zero local message refs"
+        );
 
         // Parent session still has the original 4 unique messages.
         let parent_msg_count = sqlx::query_scalar!(
@@ -1180,14 +1178,8 @@ mod tests {
         assert_eq!(second.base_checkpoint_id, Some(first.id));
 
         // Load context — both should have the right messages.
-        let first_ctx = storage
-            .load_checkpoint_context(first.id)
-            .await
-            .unwrap();
-        let second_ctx = storage
-            .load_checkpoint_context(second.id)
-            .await
-            .unwrap();
+        let first_ctx = storage.load_checkpoint_context(first.id).await.unwrap();
+        let second_ctx = storage.load_checkpoint_context(second.id).await.unwrap();
         assert_eq!(first_ctx.snapshot.messages, first_msgs);
         assert_eq!(second_ctx.snapshot.messages, second_msgs);
 
@@ -1201,10 +1193,7 @@ mod tests {
         .unwrap();
         assert_eq!(ref_count, 2); // only the 2 new messages
         assert_eq!(
-            storage
-                .checkpoint_local_ref_count(second.id)
-                .await
-                .unwrap(),
+            storage.checkpoint_local_ref_count(second.id).await.unwrap(),
             2
         );
 

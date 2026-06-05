@@ -172,7 +172,7 @@ mod tests {
 
     use crate::ai::resolver::IResolver;
     use crate::ai::resolver::action::Reason;
-    use crate::ai::resolver::openai::context::Context;
+    use crate::ai::resolver_impl::openai::context::Context;
 
     fn user(content: &str) -> ChatCompletionMessageParam {
         ChatCompletionMessageParam::User {
@@ -263,7 +263,8 @@ mod tests {
 
         assert!(
             content.contains("12"),
-            "expected '12' in three-turn response, got: {content}"
+            "expected '12' in three-turn response, got: {}",
+            content
         );
     }
 }
