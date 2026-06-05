@@ -2,8 +2,8 @@ use std::collections::HashSet;
 
 use async_trait::async_trait;
 
-use crate::ai::agent::Agent;
 use crate::ai::agent::AgentBuilder;
+use crate::ai::agent::AgentPlugin;
 use crate::ai::agent::compact::Compact;
 use crate::ai::agent::compact::SlidingWindowCompact;
 use crate::ai::agent::interceptor::Interceptor;
@@ -15,18 +15,40 @@ use crate::ai::resolver::message::IMessage;
 use crate::ai::resolver::message::MessageOwned;
 use crate::ai::resolver::message::MessageRef;
 
-pub type InspiredAgent<M, R> = Agent<M, R, InspirationState, InspirationAnnotation>;
-
-pub type InspiredAgentBuilder<M, R> = AgentBuilder<M, R, InspirationState, InspirationAnnotation>;
-
 #[derive(Debug, Default)]
 pub struct InspirationState {
     active_inspiration_ids: HashSet<String>,
 }
 
+pub trait WithInspirationState {
+    fn inspiration_state_mut(&mut self) -> &mut InspirationState;
+}
+
+impl WithInspirationState for InspirationState {
+    fn inspiration_state_mut(&mut self) -> &mut InspirationState {
+        self
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct InspirationAnnotation {
     inspiration_id: Option<String>,
+}
+
+pub trait WithInspirationAnnotation {
+    fn inspiration_annotation(&self) -> &InspirationAnnotation;
+
+    fn inspiration_annotation_mut(&mut self) -> &mut InspirationAnnotation;
+}
+
+impl WithInspirationAnnotation for InspirationAnnotation {
+    fn inspiration_annotation(&self) -> &InspirationAnnotation {
+        self
+    }
+
+    fn inspiration_annotation_mut(&mut self) -> &mut InspirationAnnotation {
+        self
+    }
 }
 
 impl InspirationAnnotation {
@@ -35,24 +57,38 @@ impl InspirationAnnotation {
             inspiration_id: Some(id.into()),
         }
     }
+
+    fn inspiration_id(&self) -> Option<&str> {
+        self.inspiration_id.as_deref()
+    }
 }
 
-pub fn plugin_inspiration<M, R>(builder: InspiredAgentBuilder<M, R>) -> InspiredAgentBuilder<M, R>
+pub fn plugin_inspiration() -> InspirationPlugin {
+    InspirationPlugin
+}
+
+pub struct InspirationPlugin;
+
+impl<M, R, S, A> AgentPlugin<M, R, S, A> for InspirationPlugin
 where
     M: IMessage + Send + Sync + 'static,
-    R: IResolver<Message = M> + Send + 'static,
+    R: IResolver<Message = M> + Send,
+    S: WithInspirationState + Send + Sync + 'static,
+    A: WithInspirationAnnotation + Default + Send + Sync + 'static,
 {
-    builder
-        .compact(InspirationCompact::<M>::default())
-        .interceptor(InspirationInterceptor::<M>::default())
+    fn apply(&self, builder: AgentBuilder<M, R, S, A>) -> AgentBuilder<M, R, S, A> {
+        builder
+            .compact(InspirationCompact::<M, S, A>::default())
+            .interceptor(InspirationInterceptor::<M, S, A>::default())
+    }
 }
 
-struct InspirationInterceptor<M> {
+struct InspirationInterceptor<M, S, A> {
     knowledge: InspirationKnowledge,
-    marker: std::marker::PhantomData<fn() -> M>,
+    marker: std::marker::PhantomData<fn() -> (M, S, A)>,
 }
 
-impl<M> Default for InspirationInterceptor<M> {
+impl<M, S, A> Default for InspirationInterceptor<M, S, A> {
     fn default() -> Self {
         Self {
             knowledge: InspirationKnowledge,
@@ -62,35 +98,34 @@ impl<M> Default for InspirationInterceptor<M> {
 }
 
 #[async_trait]
-impl<M> Interceptor<InspirationState, M, InspirationAnnotation> for InspirationInterceptor<M>
+impl<M, S, A> Interceptor<S, M, A> for InspirationInterceptor<M, S, A>
 where
     M: IMessage + Send + Sync + 'static,
+    S: WithInspirationState + Send + Sync + 'static,
+    A: WithInspirationAnnotation + Default + Send + Sync + 'static,
 {
-    async fn before_solve(
-        &mut self,
-        state: &mut InspirationState,
-        cx: &mut Context<M, InspirationAnnotation>,
-    ) -> InterceptorFlow {
+    async fn before_solve(&mut self, state: &mut S, cx: &mut Context<M, A>) -> InterceptorFlow {
         let Some(user_text) = latest_user_text(cx) else {
             return InterceptorFlow::Continue;
         };
 
         let input = MatchInput::parse(user_text);
-        let injections = self.knowledge.match_entries(&input, state);
+        let inspiration_state = state.inspiration_state_mut();
+        let injections = self.knowledge.match_entries(&input, inspiration_state);
         if injections.is_empty() {
             return InterceptorFlow::Continue;
         }
 
-        inject_before_latest_message(cx, injections, state);
+        inject_before_latest_message(cx, injections, inspiration_state);
         InterceptorFlow::Continue
     }
 }
 
-struct InspirationCompact<M> {
-    inner: SlidingWindowCompact<M, InspirationState, InspirationAnnotation>,
+struct InspirationCompact<M, S, A> {
+    inner: SlidingWindowCompact<M, S, A>,
 }
 
-impl<M> Default for InspirationCompact<M> {
+impl<M, S, A> Default for InspirationCompact<M, S, A> {
     fn default() -> Self {
         Self {
             inner: SlidingWindowCompact::default(),
@@ -99,21 +134,19 @@ impl<M> Default for InspirationCompact<M> {
 }
 
 #[async_trait]
-impl<M> Compact for InspirationCompact<M>
+impl<M, S, A> Compact for InspirationCompact<M, S, A>
 where
     M: IMessage + Send + Sync + 'static,
+    S: WithInspirationState + Send + Sync + 'static,
+    A: WithInspirationAnnotation + Default + Send + Sync + 'static,
 {
     type Message = M;
-    type State = InspirationState;
-    type Annotation = InspirationAnnotation;
+    type State = S;
+    type Annotation = A;
 
-    async fn compact(
-        &mut self,
-        state: &mut InspirationState,
-        cx: &mut Context<Self::Message, Self::Annotation>,
-    ) {
+    async fn compact(&mut self, state: &mut S, cx: &mut Context<Self::Message, Self::Annotation>) {
         self.inner.compact(state, cx).await;
-        state.active_inspiration_ids = retained_inspiration_ids(cx);
+        state.inspiration_state_mut().active_inspiration_ids = retained_inspiration_ids(cx);
     }
 }
 
@@ -174,7 +207,7 @@ impl<'a> MatchInput<'a> {
     }
 }
 
-fn latest_user_text<M>(cx: &Context<M, InspirationAnnotation>) -> Option<&str>
+fn latest_user_text<M, A>(cx: &Context<M, A>) -> Option<&str>
 where
     M: IMessage + Send + Sync + 'static,
 {
@@ -185,12 +218,13 @@ where
     }
 }
 
-fn inject_before_latest_message<M>(
-    cx: &mut Context<M, InspirationAnnotation>,
+fn inject_before_latest_message<M, A>(
+    cx: &mut Context<M, A>,
     injections: Vec<KnowledgeEntry>,
     state: &mut InspirationState,
 ) where
     M: IMessage + Send + Sync + 'static,
+    A: WithInspirationAnnotation + Default,
 {
     let mut messages = cx.take_annotated_messages();
     let Some(latest) = messages.pop() else {
@@ -201,10 +235,9 @@ fn inject_before_latest_message<M>(
     for entry in injections {
         let content = format!("[灵光一闪]\n{}", entry.content);
         let message = M::from(MessageOwned::User { content });
-        messages.push(AnnotatedMessage::new(
-            message,
-            InspirationAnnotation::inspiration(entry.id),
-        ));
+        let mut annotation = A::default();
+        *annotation.inspiration_annotation_mut() = InspirationAnnotation::inspiration(entry.id);
+        messages.push(AnnotatedMessage::new(message, annotation));
         state.active_inspiration_ids.insert(entry.id.to_string());
     }
 
@@ -212,13 +245,20 @@ fn inject_before_latest_message<M>(
     cx.set_annotated_messages(messages);
 }
 
-fn retained_inspiration_ids<M>(cx: &Context<M, InspirationAnnotation>) -> HashSet<String>
+fn retained_inspiration_ids<M, A>(cx: &Context<M, A>) -> HashSet<String>
 where
     M: IMessage + Send + Sync + 'static,
+    A: WithInspirationAnnotation,
 {
     cx.annotated_messages()
         .iter()
-        .filter_map(|message| message.annotation.inspiration_id.clone())
+        .filter_map(|message| {
+            message
+                .annotation
+                .inspiration_annotation()
+                .inspiration_id()
+                .map(str::to_string)
+        })
         .collect()
 }
 
@@ -278,9 +318,9 @@ mod tests {
 
     #[tokio::test]
     async fn before_solve_injects_matched_inspiration_before_latest_user_message() {
-        let mut interceptor = InspirationInterceptor::default();
+        let mut interceptor = InspirationInterceptor::<ChatCompletionMessageParam, _, _>::default();
         let mut state = InspirationState::default();
-        let mut cx = ContextBuilder::new("test-model")
+        let mut cx = ContextBuilder::<_, InspirationAnnotation>::new("test-model")
             .messages(vec![user(
                 "[group_qid: 1, group_name: -, sender_qid: 2, sender_nickname: LB, sender_group_nickname: -, sender_prks_id: -, sent_at: now]\n帮我看看",
             )])
@@ -300,7 +340,7 @@ mod tests {
         assert_eq!(
             cx.annotated_messages()[0]
                 .annotation
-                .inspiration_id
+                .inspiration_id()
                 .as_deref(),
             Some("member.lb")
         );
@@ -308,12 +348,12 @@ mod tests {
 
     #[tokio::test]
     async fn before_solve_does_not_duplicate_active_inspiration() {
-        let mut interceptor = InspirationInterceptor::default();
+        let mut interceptor = InspirationInterceptor::<ChatCompletionMessageParam, _, _>::default();
         let mut state = InspirationState::default();
         state
             .active_inspiration_ids
             .insert("member.nabai".to_string());
-        let mut cx = ContextBuilder::new("test-model")
+        let mut cx = ContextBuilder::<_, InspirationAnnotation>::new("test-model")
             .messages(vec![user(
                 "[group_qid: 1, group_name: -, sender_qid: 2, sender_nickname: 小明, sender_group_nickname: -, sender_prks_id: -, sent_at: now]\n那白在吗",
             )])
@@ -331,7 +371,7 @@ mod tests {
         state
             .active_inspiration_ids
             .insert("member.nabai".to_string());
-        let mut cx = ContextBuilder::new("test-model")
+        let mut cx = ContextBuilder::<_, InspirationAnnotation>::new("test-model")
             .annotated_messages(vec![
                 annotated_user(
                     "[灵光一闪]\n那白：翻译",
@@ -340,7 +380,7 @@ mod tests {
                 annotated_user("那白在吗", InspirationAnnotation::default()),
             ])
             .build();
-        let mut compact = InspirationCompact::default();
+        let mut compact = InspirationCompact::<ChatCompletionMessageParam, _, _>::default();
 
         compact.compact(&mut state, &mut cx).await;
 

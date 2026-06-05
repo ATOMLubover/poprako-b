@@ -405,6 +405,16 @@ where
     interceptors: Vec<DynInterceptor<S, M, A>>,
 }
 
+pub trait AgentPlugin<M, R, S, A>
+where
+    S: Send + Sync + 'static,
+    M: IMessage + Send + Sync + 'static,
+    R: IResolver<Message = M> + Send,
+    A: Default + Send + Sync + 'static,
+{
+    fn apply(&self, builder: AgentBuilder<M, R, S, A>) -> AgentBuilder<M, R, S, A>;
+}
+
 impl<M, R, S, A> AgentBuilder<M, R, S, A>
 where
     S: Default + Send + Sync + 'static,
@@ -471,6 +481,13 @@ where
         agent.rebuild_tools(self.tools);
 
         agent
+    }
+
+    pub fn plugin<P>(self, plugin: P) -> Self
+    where
+        P: AgentPlugin<M, R, S, A>,
+    {
+        plugin.apply(self)
     }
 }
 

@@ -1,5 +1,6 @@
 mod plugin;
 mod prompt;
+mod state;
 mod tool;
 mod value_object;
 
@@ -7,16 +8,16 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use openai_oxide::types::chat::ChatCompletionMessageParam;
-use plugin::inspiration::InspirationAnnotation;
-use plugin::inspiration::InspirationState;
-use plugin::inspiration::InspiredAgent;
-use plugin::inspiration::InspiredAgentBuilder;
-use plugin::inspiration::modify_agent_builder;
+use plugin::inspiration::plugin_inspiration;
+use state::BotAgentState;
+use state::BotMessageAnnotation;
 use tool::build_tools;
 
+use crate::ai::agent::Agent;
+use crate::ai::agent::AgentBuilder;
 use crate::ai::agent::tool::remote::RemoteProxy;
 use crate::ai::resolver::context::ContextBuilder;
-use crate::ai::resolver::message::{MessageOwned, MessageRef};
+use crate::ai::resolver::message::MessageOwned;
 use crate::ai::resolver_impl::openai::OpenAiResolver;
 use crate::bot::agent::prompt::system_prompt;
 use crate::bot::value_object::ChatMessage;
@@ -33,7 +34,7 @@ pub use prompt::spawn_refresh_system_promt_task;
 const MODEL_NAME: &str = "deepseek-v4-flash";
 
 pub struct BotAgent {
-    agent: InspiredAgent<ChatCompletionMessageParam, OpenAiResolver>,
+    agent: Agent<ChatCompletionMessageParam, OpenAiResolver, BotAgentState, BotMessageAnnotation>,
     /// Map from user_qid to poprako-s user_id.
     id_transform: HashMap<String, String>,
 }
@@ -43,23 +44,24 @@ impl BotAgent {
         let resolver = OpenAiResolver::from_env();
 
         let system_prompt = system_prompt()?;
+
         let tools = build_tools().await;
         let remote_proxy = RemoteProxy::from_local_config().await.ok();
 
-        let context = ContextBuilder::<_, InspirationAnnotation>::new(MODEL_NAME)
+        let context = ContextBuilder::<_, BotMessageAnnotation>::new(MODEL_NAME)
             .messages(vec![
-                MessageRef::System {
-                    content: &system_prompt,
+                MessageOwned::System {
+                    content: system_prompt,
                 }
                 .into(),
             ])
             .build();
 
-        let builder =
-            InspiredAgentBuilder::new_with_state(InspirationState::default(), context, resolver)
-                .tools(tools)
-                .remote_proxy(remote_proxy);
-        let agent = modify_agent_builder(builder).build();
+        let agent = AgentBuilder::new_with_state(BotAgentState::default(), context, resolver)
+            .tools(tools)
+            .remote_proxy(remote_proxy)
+            .plugin(plugin_inspiration())
+            .build();
 
         Ok(Self {
             agent,
