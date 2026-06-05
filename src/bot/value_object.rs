@@ -2,12 +2,12 @@ use time::OffsetDateTime;
 
 #[derive(Debug, Clone)]
 pub struct ChatMessageMeta {
-    group_qid: i64,
-    group_name: String,
+    channel_id: String,
+    channel_name: String,
 
-    sender_qid: i64,
+    sender_id: String,
     sender_nickname: String,
-    sender_group_nickname: Option<String>,
+    sender_channel_nickname: Option<String>,
     sender_prks_id: Option<String>,
 
     sent_at: OffsetDateTime,
@@ -21,43 +21,43 @@ pub struct ChatMessage {
 
 impl ChatMessageMeta {
     pub fn new(
-        group_qid: i64,
-        group_name: impl Into<String>,
-        sender_qid: i64,
+        channel_id: impl Into<String>,
+        channel_name: impl Into<String>,
+        sender_id: impl Into<String>,
         sender_nickname: impl Into<String>,
-        sender_group_nickname: Option<String>,
+        sender_channel_nickname: Option<String>,
         sender_prks_id: Option<String>,
         sent_at: OffsetDateTime,
     ) -> Self {
         Self {
-            group_qid,
-            group_name: group_name.into(),
-            sender_qid,
+            channel_id: channel_id.into(),
+            channel_name: channel_name.into(),
+            sender_id: sender_id.into(),
             sender_nickname: sender_nickname.into(),
-            sender_group_nickname,
+            sender_channel_nickname,
             sender_prks_id,
             sent_at,
         }
     }
 
-    pub fn group_qid(&self) -> i64 {
-        self.group_qid
+    pub fn channel_id(&self) -> &str {
+        &self.channel_id
     }
 
-    pub fn group_name(&self) -> &str {
-        &self.group_name
+    pub fn channel_name(&self) -> &str {
+        &self.channel_name
     }
 
-    pub fn sender_qid(&self) -> i64 {
-        self.sender_qid
+    pub fn sender_id(&self) -> &str {
+        &self.sender_id
     }
 
     pub fn sender_nickname(&self) -> &str {
         &self.sender_nickname
     }
 
-    pub fn sender_group_nickname(&self) -> Option<&str> {
-        self.sender_group_nickname.as_deref()
+    pub fn sender_channel_nickname(&self) -> Option<&str> {
+        self.sender_channel_nickname.as_deref()
     }
 
     pub fn sender_prks_id(&self) -> Option<&str> {
@@ -86,19 +86,19 @@ impl ChatMessage {
     }
 
     pub fn into_prompt_text(self) -> String {
-        let group_name = if self.meta.group_name.is_empty() {
+        let channel_name = if self.meta.channel_name.is_empty() {
             "-"
         } else {
-            &self.meta.group_name
+            &self.meta.channel_name
         };
 
         format!(
-            "[group_qid: {}, group_name: {}, sender_qid: {}, sender_nickname: {}, sender_group_nickname: {}, sender_prks_id: {}, sent_at: {}]\n{}",
-            self.meta.group_qid,
-            group_name,
-            self.meta.sender_qid,
+            "[channel_id: {}, channel_name: {}, sender_id: {}, sender_nickname: {}, sender_channel_nickname: {}, sender_prks_id: {}, sent_at: {}]\n{}",
+            self.meta.channel_id,
+            channel_name,
+            self.meta.sender_id,
             self.meta.sender_nickname,
-            self.meta.sender_group_nickname.as_deref().unwrap_or("-"),
+            self.meta.sender_channel_nickname.as_deref().unwrap_or("-"),
             self.meta.sender_prks_id.as_deref().unwrap_or("-"),
             self.meta.sent_at,
             self.content

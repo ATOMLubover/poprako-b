@@ -3,10 +3,10 @@ use std::collections::HashSet;
 use async_trait::async_trait;
 
 use crate::ai::agent::AgentBuilder;
-use crate::ai::agent::AgentPlugin;
-use crate::ai::agent::compact::Compact;
+use crate::ai::agent::IAgentPlugin;
+use crate::ai::agent::compact::ICompact;
 use crate::ai::agent::compact::SlidingWindowCompact;
-use crate::ai::agent::interceptor::Interceptor;
+use crate::ai::agent::interceptor::IInterceptor;
 use crate::ai::agent::interceptor::InterceptorFlow;
 use crate::ai::resolver::IResolver;
 use crate::ai::resolver::context::AnnotatedMessage;
@@ -20,11 +20,11 @@ pub struct InspirationState {
     active_inspiration_ids: HashSet<String>,
 }
 
-pub trait WithInspirationState {
+pub trait IWithInspirationState {
     fn inspiration_state_mut(&mut self) -> &mut InspirationState;
 }
 
-impl WithInspirationState for InspirationState {
+impl IWithInspirationState for InspirationState {
     fn inspiration_state_mut(&mut self) -> &mut InspirationState {
         self
     }
@@ -35,13 +35,13 @@ pub struct InspirationAnnotation {
     inspiration_id: Option<String>,
 }
 
-pub trait WithInspirationAnnotation {
+pub trait IWithInspirationAnnotation {
     fn inspiration_annotation(&self) -> &InspirationAnnotation;
 
     fn inspiration_annotation_mut(&mut self) -> &mut InspirationAnnotation;
 }
 
-impl WithInspirationAnnotation for InspirationAnnotation {
+impl IWithInspirationAnnotation for InspirationAnnotation {
     fn inspiration_annotation(&self) -> &InspirationAnnotation {
         self
     }
@@ -69,12 +69,12 @@ pub fn plugin_inspiration() -> InspirationPlugin {
 
 pub struct InspirationPlugin;
 
-impl<M, R, S, A> AgentPlugin<M, R, S, A> for InspirationPlugin
+impl<M, R, S, A> IAgentPlugin<M, R, S, A> for InspirationPlugin
 where
     M: IMessage + Send + Sync + 'static,
     R: IResolver<Message = M> + Send,
-    S: WithInspirationState + Send + Sync + 'static,
-    A: WithInspirationAnnotation + Default + Send + Sync + 'static,
+    S: IWithInspirationState + Send + Sync + 'static,
+    A: IWithInspirationAnnotation + Default + Send + Sync + 'static,
 {
     fn apply(&self, builder: AgentBuilder<M, R, S, A>) -> AgentBuilder<M, R, S, A> {
         builder
@@ -98,11 +98,11 @@ impl<M, S, A> Default for InspirationInterceptor<M, S, A> {
 }
 
 #[async_trait]
-impl<M, S, A> Interceptor<S, M, A> for InspirationInterceptor<M, S, A>
+impl<M, S, A> IInterceptor<S, M, A> for InspirationInterceptor<M, S, A>
 where
     M: IMessage + Send + Sync + 'static,
-    S: WithInspirationState + Send + Sync + 'static,
-    A: WithInspirationAnnotation + Default + Send + Sync + 'static,
+    S: IWithInspirationState + Send + Sync + 'static,
+    A: IWithInspirationAnnotation + Default + Send + Sync + 'static,
 {
     async fn before_solve(&mut self, state: &mut S, cx: &mut Context<M, A>) -> InterceptorFlow {
         let Some(user_text) = latest_user_text(cx) else {
@@ -134,11 +134,11 @@ impl<M, S, A> Default for InspirationCompact<M, S, A> {
 }
 
 #[async_trait]
-impl<M, S, A> Compact for InspirationCompact<M, S, A>
+impl<M, S, A> ICompact for InspirationCompact<M, S, A>
 where
     M: IMessage + Send + Sync + 'static,
-    S: WithInspirationState + Send + Sync + 'static,
-    A: WithInspirationAnnotation + Default + Send + Sync + 'static,
+    S: IWithInspirationState + Send + Sync + 'static,
+    A: IWithInspirationAnnotation + Default + Send + Sync + 'static,
 {
     type Message = M;
     type State = S;
@@ -183,7 +183,7 @@ impl KnowledgeEntry {
 
 struct MatchInput<'a> {
     sender_nickname: Option<&'a str>,
-    sender_group_nickname: Option<&'a str>,
+    sender_channel_nickname: Option<&'a str>,
     body: &'a str,
 }
 
@@ -195,7 +195,7 @@ impl<'a> MatchInput<'a> {
 
         Self {
             sender_nickname: metadata_value(meta, "sender_nickname"),
-            sender_group_nickname: metadata_value(meta, "sender_group_nickname"),
+            sender_channel_nickname: metadata_value(meta, "sender_channel_nickname"),
             body,
         }
     }
@@ -203,7 +203,7 @@ impl<'a> MatchInput<'a> {
     fn contains(&self, keyword: &str) -> bool {
         self.body.contains(keyword)
             || self.sender_nickname == Some(keyword)
-            || self.sender_group_nickname == Some(keyword)
+            || self.sender_channel_nickname == Some(keyword)
     }
 }
 
@@ -224,7 +224,7 @@ fn inject_before_latest_message<M, A>(
     state: &mut InspirationState,
 ) where
     M: IMessage + Send + Sync + 'static,
-    A: WithInspirationAnnotation + Default,
+    A: IWithInspirationAnnotation + Default,
 {
     let mut messages = cx.take_annotated_messages();
     let Some(latest) = messages.pop() else {
@@ -248,7 +248,7 @@ fn inject_before_latest_message<M, A>(
 fn retained_inspiration_ids<M, A>(cx: &Context<M, A>) -> HashSet<String>
 where
     M: IMessage + Send + Sync + 'static,
-    A: WithInspirationAnnotation,
+    A: IWithInspirationAnnotation,
 {
     cx.annotated_messages()
         .iter()
@@ -322,7 +322,7 @@ mod tests {
         let mut state = InspirationState::default();
         let mut cx = ContextBuilder::<_, InspirationAnnotation>::new("test-model")
             .messages(vec![user(
-                "[group_qid: 1, group_name: -, sender_qid: 2, sender_nickname: LB, sender_group_nickname: -, sender_prks_id: -, sent_at: now]\n帮我看看",
+                "[channel_id: 1, channel_name: -, sender_id: 2, sender_nickname: LB, sender_channel_nickname: -, sender_prks_id: -, sent_at: now]\n帮我看看",
             )])
             .build();
 
@@ -333,7 +333,7 @@ mod tests {
         match cx.annotated_messages()[1].message.message_ref() {
             MessageRef::User { content } => assert_eq!(
                 content,
-                "[group_qid: 1, group_name: -, sender_qid: 2, sender_nickname: LB, sender_group_nickname: -, sender_prks_id: -, sent_at: now]\n帮我看看"
+                "[channel_id: 1, channel_name: -, sender_id: 2, sender_nickname: LB, sender_channel_nickname: -, sender_prks_id: -, sent_at: now]\n帮我看看"
             ),
             _ => panic!("latest message should remain a user message"),
         }
@@ -355,7 +355,7 @@ mod tests {
             .insert("member.nabai".to_string());
         let mut cx = ContextBuilder::<_, InspirationAnnotation>::new("test-model")
             .messages(vec![user(
-                "[group_qid: 1, group_name: -, sender_qid: 2, sender_nickname: 小明, sender_group_nickname: -, sender_prks_id: -, sent_at: now]\n那白在吗",
+                "[channel_id: 1, channel_name: -, sender_id: 2, sender_nickname: 小明, sender_channel_nickname: -, sender_prks_id: -, sent_at: now]\n那白在吗",
             )])
             .build();
 

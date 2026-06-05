@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 
-use crate::ai::agent::compact::{Compact, DynCompact};
+use crate::ai::agent::compact::{DynCompact, ICompact};
 use crate::ai::agent::interceptor::DynInterceptor;
-use crate::ai::agent::interceptor::Interceptor;
+use crate::ai::agent::interceptor::IInterceptor;
 use crate::ai::agent::interceptor::InterceptorFlow;
 use crate::ai::agent::interceptor::InterceptorRegistry;
 use crate::ai::agent::interceptor::ToolInterceptorFlow;
@@ -97,7 +97,7 @@ where
 
     pub fn push_interceptor<I>(&mut self, interceptor: I)
     where
-        I: Interceptor<S, M, A> + 'static,
+        I: IInterceptor<S, M, A> + 'static,
     {
         self.interceptor_registry.push(interceptor);
     }
@@ -405,7 +405,7 @@ where
     interceptors: Vec<DynInterceptor<S, M, A>>,
 }
 
-pub trait AgentPlugin<M, R, S, A>
+pub trait IAgentPlugin<M, R, S, A>
 where
     S: Send + Sync + 'static,
     M: IMessage + Send + Sync + 'static,
@@ -453,7 +453,7 @@ where
 
     pub fn compact<C>(mut self, compact: C) -> Self
     where
-        C: Compact<Message = M, State = S, Annotation = A> + 'static,
+        C: ICompact<Message = M, State = S, Annotation = A> + 'static,
     {
         self.compact = Some(Box::new(compact));
         self
@@ -466,7 +466,7 @@ where
 
     pub fn interceptor<I>(mut self, interceptor: I) -> Self
     where
-        I: Interceptor<S, M, A> + 'static,
+        I: IInterceptor<S, M, A> + 'static,
     {
         self.interceptors.push(Box::new(interceptor));
         self
@@ -485,7 +485,7 @@ where
 
     pub fn plugin<P>(self, plugin: P) -> Self
     where
-        P: AgentPlugin<M, R, S, A>,
+        P: IAgentPlugin<M, R, S, A>,
     {
         plugin.apply(self)
     }
@@ -500,7 +500,7 @@ mod tests {
     use std::sync::atomic::AtomicUsize;
     use std::sync::atomic::Ordering;
 
-    use crate::ai::agent::compact::Compact;
+    use crate::ai::agent::compact::ICompact;
     use crate::ai::agent::compact::SlidingWindowCompact;
     use crate::ai::agent::interceptor::InterceptorFlow;
     use crate::ai::agent::tool::local::fs::{CreateFileTool, ReadFileTool};
@@ -543,7 +543,7 @@ mod tests {
     struct StopBeforeSolve;
 
     #[async_trait::async_trait]
-    impl Interceptor<(), ChatCompletionMessageParam, ()> for StopBeforeSolve {
+    impl IInterceptor<(), ChatCompletionMessageParam, ()> for StopBeforeSolve {
         async fn before_solve(
             &mut self,
             _state: &mut (),
@@ -558,7 +558,7 @@ mod tests {
     struct RewriteOutput;
 
     #[async_trait::async_trait]
-    impl Interceptor<(), ChatCompletionMessageParam, ()> for RewriteOutput {
+    impl IInterceptor<(), ChatCompletionMessageParam, ()> for RewriteOutput {
         async fn after_resolve(
             &mut self,
             _state: &mut (),
@@ -588,7 +588,7 @@ mod tests {
     struct CountAfterSolve;
 
     #[async_trait::async_trait]
-    impl Interceptor<TestState, ChatCompletionMessageParam, ()> for CountAfterSolve {
+    impl IInterceptor<TestState, ChatCompletionMessageParam, ()> for CountAfterSolve {
         async fn after_solve(
             &mut self,
             state: &mut TestState,

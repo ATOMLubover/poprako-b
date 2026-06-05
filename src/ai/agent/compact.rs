@@ -6,7 +6,7 @@ use crate::ai::resolver::context::Context;
 use crate::ai::resolver::message::{IMessage, MessageRole};
 
 #[async_trait]
-pub trait Compact: Send {
+pub trait ICompact: Send {
     type Message: IMessage + Send + Sync + 'static;
     type State: Send + Sync + 'static;
     type Annotation: Default + Send + Sync + 'static;
@@ -18,7 +18,7 @@ pub trait Compact: Send {
     );
 }
 
-pub type DynCompact<M, S = (), A = ()> = Box<dyn Compact<Message = M, State = S, Annotation = A>>;
+pub type DynCompact<M, S = (), A = ()> = Box<dyn ICompact<Message = M, State = S, Annotation = A>>;
 
 pub struct SlidingWindowCompact<M, S = (), A = ()> {
     max_messages: usize,
@@ -44,7 +44,7 @@ impl<M, S, A> Default for SlidingWindowCompact<M, S, A> {
 }
 
 #[async_trait]
-impl<M, S, A> Compact for SlidingWindowCompact<M, S, A>
+impl<M, S, A> ICompact for SlidingWindowCompact<M, S, A>
 where
     M: IMessage + Send + Sync + 'static,
     S: Send + Sync + 'static,

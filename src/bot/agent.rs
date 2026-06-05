@@ -35,7 +35,7 @@ const MODEL_NAME: &str = "deepseek-v4-flash";
 
 pub struct BotAgent {
     agent: Agent<ChatCompletionMessageParam, OpenAiResolver, BotAgentState, BotMessageAnnotation>,
-    /// Map from user_qid to poprako-s user_id.
+    /// Map from channel actor id to poprako-s user_id.
     id_transform: HashMap<String, String>,
 }
 
@@ -69,6 +69,10 @@ impl BotAgent {
         })
     }
 
+    pub fn watch_system_prompt(&self) {
+        unimplemented!()
+    }
+
     /// Reload the system prompt at messages[0] without affecting the
     /// conversation history (messages[1..]).
     pub fn reload_system_prompt(&mut self, content: String) {
@@ -77,11 +81,11 @@ impl BotAgent {
             .set_system_message(MessageOwned::System { content }.into());
     }
 
-    pub async fn try_respond(&mut self, chat_message: ChatMessage) -> Option<String> {
-        let sender_qid = chat_message.meta().sender_qid().to_string();
+    pub async fn try_answer(&mut self, chat_message: ChatMessage) -> Option<String> {
+        let sender_id = chat_message.meta().sender_id();
         let sender_prks_id = self
             .id_transform
-            .get(&sender_qid)
+            .get(sender_id)
             .map(String::as_str)
             .or_else(|| chat_message.meta().sender_prks_id());
 
@@ -91,11 +95,11 @@ impl BotAgent {
             let meta = chat_message.meta();
             ChatMessage::new(
                 ChatMessageMeta::new(
-                    meta.group_qid(),
-                    meta.group_name(),
-                    meta.sender_qid(),
+                    meta.channel_id(),
+                    meta.channel_name(),
+                    meta.sender_id(),
                     meta.sender_nickname(),
-                    meta.sender_group_nickname().map(str::to_string),
+                    meta.sender_channel_nickname().map(str::to_string),
                     sender_prks_id.map(str::to_string),
                     meta.sent_at(),
                 ),

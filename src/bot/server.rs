@@ -6,9 +6,14 @@ use std::time::Duration;
 
 use crate::bot::agent::BotAgent;
 use crate::bot::agent::spawn_refresh_system_promt_task;
-use crate::bot::handler::handle_group_message;
+use crate::bot::handler::handle_channel_message;
 use crate::bot::keepalive::spawn_keepalive_task;
-use crate::bot::message::{InputMessage, OutputMessage};
+use crate::bot::message::ChannelMessage;
+use crate::bot::message::MessageActor;
+use crate::bot::message::MessageContent;
+use crate::bot::message::MessagePart;
+use crate::bot::message::ReplyTarget;
+use crate::bot::message::SendMessage;
 use crate::bot::scheduled_task::spawn_spam_task;
 use crate::bot::server::config::BotServerConfig;
 use crate::bot::state::BotState;
@@ -16,8 +21,11 @@ use crate::bot::state::BotState;
 use anyhow::Context as _;
 use onebot_v11::api::payload::{ApiPayload, SendGroupMsg};
 use onebot_v11::connect::ws_reverse::ReverseWsConnect;
+use onebot_v11::event::message::GroupMessage;
 use onebot_v11::event::message::Message as OneBotMessage;
 use onebot_v11::{Event, MessageSegment};
+use time::OffsetDateTime;
+use time::UtcOffset;
 use tokio::sync::broadcast::error::RecvError;
 
 const FIRST_REPLY_DELAY_MS: std::ops::Range<u64> = 2000..5000;
@@ -37,17 +45,21 @@ impl BotServer {
         let conn = ReverseWsConnect::new(config.reverse_ws.into()).await?;
 
         let agent = BotAgent::new().await?;
-        let state = BotState::new(agent, config.self_qid);
+        let state = BotState::new(agent, config.self_id);
 
         Ok(Self { conn, state })
     }
 
     pub async fn serve(mut self) -> anyhow::Result<()> {
         let reply_sender = GroupReplySender::new(self.conn.clone());
-        let self_qid = self.state.self_qid();
+        let self_id = self
+            .state
+            .self_id()
+            .parse::<i64>()
+            .context("self id must be a valid OneBot user id")?;
 
-        spawn_keepalive_task(self.conn.clone(), self_qid);
-        spawn_spam_task(self.conn.clone(), self_qid);
+        spawn_keepalive_task(self.conn.clone(), self_id);
+        spawn_spam_task(self.conn.clone(), self_id);
 
         let mut event_recv = self.conn.subscribe().await;
         let mut prompt_recv = spawn_refresh_system_promt_task()?;
@@ -71,16 +83,17 @@ impl BotServer {
         event: Result<Event, RecvError>,
         reply_sender: &GroupReplySender,
     ) {
-        let Some(message) = filter_group_message(&mut self.state, event) else {
+        let Some(message) = filter_channel_message(&mut self.state, event) else {
             return;
         };
 
-        let outputs = handle_group_message(&mut self.state, &message).await;
+        let reply_target = message.reply_target();
+        let outputs = handle_channel_message(&mut self.state, message).await;
         if outputs.is_empty() {
             return;
         }
 
-        reply_sender.send_batch(message, outputs).await;
+        reply_sender.send_batch(reply_target, outputs).await;
     }
 
     /// Returns `true` if the loop should continue, `false` if the channel closed.
@@ -107,12 +120,12 @@ impl GroupReplySender {
         Self { conn }
     }
 
-    async fn send_batch(&self, message: InputMessage, outputs: Vec<OutputMessage>) {
+    async fn send_batch(&self, target: ReplyTarget, outputs: Vec<SendMessage>) {
         sleep_random(FIRST_REPLY_DELAY_MS).await;
 
         let total = outputs.len();
         for (i, output) in outputs.into_iter().enumerate() {
-            if let Err(error) = self.send_one(&message, output).await {
+            if let Err(error) = self.send_one(&target, output).await {
                 tracing::error!("failed to reply to group message: {error}");
                 break;
             }
@@ -123,28 +136,26 @@ impl GroupReplySender {
         }
     }
 
-    async fn send_one(&self, incoming: &InputMessage, output: OutputMessage) -> anyhow::Result<()> {
-        if output.segments().is_empty() {
+    async fn send_one(&self, target: &ReplyTarget, output: SendMessage) -> anyhow::Result<()> {
+        if output.content.is_empty() {
             return Ok(());
         }
 
-        let group_id = incoming
-            .group_id()
-            .context("group reply is missing target group id")?;
         let message = if output.reply {
-            let message_id = incoming
-                .message_id()
-                .context("group reply is missing source message id")?;
+            let mut parts = Vec::with_capacity(output.content.len() + 1);
 
-            let mut parts = Vec::with_capacity(output.segments().len() + 1);
-
-            parts.push(MessageSegment::reply(message_id.to_string()));
-            parts.extend(output.into_segments());
+            parts.push(MessageSegment::reply(target.message_id.clone()));
+            parts.extend(content_into_segments(output.content));
 
             parts
         } else {
-            output.into_segments()
+            content_into_segments(output.content)
         };
+
+        let group_id = target
+            .channel_id
+            .parse::<i64>()
+            .context("channel id must be a valid OneBot group id")?;
 
         let payload = ApiPayload::SendGroupMsg(SendGroupMsg {
             group_id,
@@ -158,20 +169,20 @@ impl GroupReplySender {
     }
 }
 
-fn filter_group_message(
+fn filter_channel_message(
     state: &mut BotState,
     event: Result<Event, RecvError>,
-) -> Option<InputMessage> {
+) -> Option<ChannelMessage> {
     let event = receive_event(event)?;
 
-    let message = extract_group_message(event)?;
+    let message = extract_channel_message(event)?;
 
-    if message.user_id().is_some_and(|qid| state.is_self(qid)) {
+    if state.is_self(&message.actor.id) {
         return None;
     }
 
     if message.is_pure_text() {
-        state.push_history(message.clone());
+        state.push_history_text(message.raw_text.clone());
     }
 
     Some(message)
@@ -186,13 +197,76 @@ fn receive_event(event: Result<Event, RecvError>) -> Option<Event> {
     event.ok()
 }
 
-fn extract_group_message(event: Event) -> Option<InputMessage> {
+fn extract_channel_message(event: Event) -> Option<ChannelMessage> {
     match event {
         Event::Message(OneBotMessage::GroupMessage(group_message)) => {
-            Some(InputMessage::from_group_message(group_message))
+            Some(channel_message_from_onebot_group(group_message))
         }
         _ => None,
     }
+}
+
+fn channel_message_from_onebot_group(message: GroupMessage) -> ChannelMessage {
+    ChannelMessage {
+        self_id: message.self_id.to_string(),
+        message_id: message.message_id.to_string(),
+        channel_id: message.group_id.to_string(),
+        actor: MessageActor {
+            id: message.user_id.to_string(),
+            nickname: message.sender.nickname.unwrap_or_default(),
+            channel_nickname: message.sender.card,
+        },
+        sent_at: OffsetDateTime::from_unix_timestamp(message.time)
+            .ok()
+            .map(to_local_time)
+            .unwrap_or_else(current_local_time),
+        raw_text: message.raw_message,
+        content: content_from_segments(message.message),
+    }
+}
+
+fn content_from_segments(segments: Vec<MessageSegment>) -> MessageContent {
+    MessageContent {
+        parts: segments.into_iter().map(part_from_segment).collect(),
+    }
+}
+
+fn part_from_segment(segment: MessageSegment) -> MessagePart {
+    match segment {
+        MessageSegment::Text { data } => MessagePart::Text(data.text),
+        MessageSegment::At { data } => MessagePart::Mention { actor_id: data.qq },
+        MessageSegment::Reply { data } => MessagePart::Reply {
+            message_id: data.id,
+        },
+        _ => MessagePart::Other,
+    }
+}
+
+fn content_into_segments(content: MessageContent) -> Vec<MessageSegment> {
+    content
+        .parts
+        .into_iter()
+        .filter_map(part_into_segment)
+        .collect()
+}
+
+fn part_into_segment(part: MessagePart) -> Option<MessageSegment> {
+    match part {
+        MessagePart::Text(text) => Some(MessageSegment::text(text)),
+        MessagePart::Mention { actor_id } => Some(MessageSegment::at(actor_id)),
+        MessagePart::Reply { message_id } => Some(MessageSegment::reply(message_id)),
+        MessagePart::Other => None,
+    }
+}
+
+fn to_local_time(time: OffsetDateTime) -> OffsetDateTime {
+    let local_offset = UtcOffset::current_local_offset().unwrap_or(UtcOffset::UTC);
+    time.to_offset(local_offset)
+}
+
+fn current_local_time() -> OffsetDateTime {
+    let local_offset = UtcOffset::current_local_offset().unwrap_or(UtcOffset::UTC);
+    OffsetDateTime::now_utc().to_offset(local_offset)
 }
 
 async fn sleep_random(range: std::ops::Range<u64>) {

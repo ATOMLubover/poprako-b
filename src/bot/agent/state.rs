@@ -1,14 +1,14 @@
+use crate::bot::agent::plugin::inspiration::IWithInspirationAnnotation;
+use crate::bot::agent::plugin::inspiration::IWithInspirationState;
 use crate::bot::agent::plugin::inspiration::InspirationAnnotation;
 use crate::bot::agent::plugin::inspiration::InspirationState;
-use crate::bot::agent::plugin::inspiration::WithInspirationAnnotation;
-use crate::bot::agent::plugin::inspiration::WithInspirationState;
 
 #[derive(Default)]
 pub struct BotAgentState {
     inspiration_state: InspirationState,
 }
 
-impl WithInspirationState for BotAgentState {
+impl IWithInspirationState for BotAgentState {
     fn inspiration_state_mut(&mut self) -> &mut InspirationState {
         &mut self.inspiration_state
     }
@@ -19,7 +19,7 @@ pub struct BotMessageAnnotation {
     inspiration_annotation: InspirationAnnotation,
 }
 
-impl WithInspirationAnnotation for BotMessageAnnotation {
+impl IWithInspirationAnnotation for BotMessageAnnotation {
     fn inspiration_annotation(&self) -> &InspirationAnnotation {
         &self.inspiration_annotation
     }

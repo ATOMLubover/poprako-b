@@ -21,7 +21,7 @@ pub enum InterceptorFlow {
 }
 
 /// Flow control signal returned by the tool pre-call hook
-/// ([`Interceptor::before_tool_call`]).
+/// ([`IInterceptor::before_tool_call`]).
 ///
 /// | Variant | Effect |
 /// |---------|--------|
@@ -38,7 +38,7 @@ pub enum ToolInterceptorFlow {
     Stop { output: Option<String> },
 }
 
-/// Interceptor trait — hook into the [`Agent`](crate::ai::agent::Agent) solve lifecycle.
+/// IInterceptor trait — hook into the [`Agent`](crate::ai::agent::Agent) solve lifecycle.
 ///
 /// Each method is called at a specific node in the solve loop (see the
 /// individual doc comments). All methods have default no-op implementations
@@ -73,7 +73,7 @@ pub enum ToolInterceptorFlow {
 /// after_solve              ← final output, after the loop
 /// ```
 #[async_trait::async_trait]
-pub trait Interceptor<S, M, A>: Send
+pub trait IInterceptor<S, M, A>: Send
 where
     S: Send + Sync + 'static,
     M: IMessage + Send + Sync + 'static,
@@ -231,9 +231,9 @@ where
 }
 
 /// Type alias for a heap-allocated, dynamically-dispatched interceptor.
-pub type DynInterceptor<S, M, A> = Box<dyn Interceptor<S, M, A>>;
+pub type DynInterceptor<S, M, A> = Box<dyn IInterceptor<S, M, A>>;
 
-/// Registry that owns a list of [`Interceptor`]s and dispatches lifecycle
+/// Registry that owns a list of [`IInterceptor`]s and dispatches lifecycle
 /// events to each one in insertion order.
 ///
 /// # Short-circuit semantics
@@ -270,7 +270,7 @@ where
     /// Append a single interceptor (boxes it internally).
     pub fn push<I>(&mut self, interceptor: I)
     where
-        I: Interceptor<S, M, A> + 'static,
+        I: IInterceptor<S, M, A> + 'static,
     {
         self.interceptors.push(Box::new(interceptor));
     }
@@ -282,7 +282,7 @@ where
         self.interceptors = interceptors;
     }
 
-    /// Dispatch [`Interceptor::before_solve`] to all registered interceptors.
+    /// Dispatch [`IInterceptor::before_solve`] to all registered interceptors.
     /// Called by [`Agent::solve`](crate::ai::agent::Agent::solve) once before
     /// the loop begins.
     pub async fn before_solve(&mut self, state: &mut S, cx: &mut Context<M, A>) -> InterceptorFlow {
@@ -296,7 +296,7 @@ where
         InterceptorFlow::Continue
     }
 
-    /// Dispatch [`Interceptor::before_loop`] to all registered interceptors.
+    /// Dispatch [`IInterceptor::before_loop`] to all registered interceptors.
     /// Called at the start of each solve-loop iteration.
     pub async fn before_loop(
         &mut self,
@@ -314,7 +314,7 @@ where
         InterceptorFlow::Continue
     }
 
-    /// Dispatch [`Interceptor::before_resolve`] to all registered interceptors.
+    /// Dispatch [`IInterceptor::before_resolve`] to all registered interceptors.
     /// Called right before the resolver is invoked in each loop iteration.
     pub async fn before_resolve(
         &mut self,
@@ -331,7 +331,7 @@ where
         InterceptorFlow::Continue
     }
 
-    /// Dispatch [`Interceptor::after_resolve`] to all registered interceptors.
+    /// Dispatch [`IInterceptor::after_resolve`] to all registered interceptors.
     /// Called right after the resolver returns an [`Action`], before tool
     /// execution or message commit.
     pub async fn after_resolve(
@@ -350,7 +350,7 @@ where
         InterceptorFlow::Continue
     }
 
-    /// Dispatch [`Interceptor::before_tool_call`] to all registered interceptors.
+    /// Dispatch [`IInterceptor::before_tool_call`] to all registered interceptors.
     /// Called once per tool call in the action, **before** execution.
     ///
     /// Unlike other hooks, this returns [`ToolInterceptorFlow`] which also
@@ -371,7 +371,7 @@ where
         ToolInterceptorFlow::Continue
     }
 
-    /// Dispatch [`Interceptor::after_tool_call`] to all registered interceptors.
+    /// Dispatch [`IInterceptor::after_tool_call`] to all registered interceptors.
     /// Called once per tool call, **after** execution, with the mutable
     /// result.
     pub async fn after_tool_call(
@@ -391,7 +391,7 @@ where
         InterceptorFlow::Continue
     }
 
-    /// Dispatch [`Interceptor::before_commit_messages`] to all registered
+    /// Dispatch [`IInterceptor::before_commit_messages`] to all registered
     /// interceptors. Called before the action and tool-result messages are
     /// written into the [`Context`].
     pub async fn before_commit_messages(
@@ -413,7 +413,7 @@ where
         InterceptorFlow::Continue
     }
 
-    /// Dispatch [`Interceptor::after_loop`] to all registered interceptors.
+    /// Dispatch [`IInterceptor::after_loop`] to all registered interceptors.
     /// Called at the end of each loop iteration, after messages are committed,
     /// before deciding whether to continue or finish.
     pub async fn after_loop(
@@ -432,7 +432,7 @@ where
         InterceptorFlow::Continue
     }
 
-    /// Dispatch [`Interceptor::after_solve`] to all registered interceptors.
+    /// Dispatch [`IInterceptor::after_solve`] to all registered interceptors.
     /// Called once after the solve loop finishes (naturally or via `Stop`),
     /// right before the agent returns.
     pub async fn after_solve(
