@@ -63,27 +63,56 @@ pub enum MessagePart {
     Text(String),
     Mention { actor_id: String },
     Reply { message_id: String },
+    Image { data: ImageData },
     Other,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SendMessage {
-    pub reply: bool,
-    pub content: MessageContent,
-}
-
-impl SendMessage {
-    pub fn new(reply: bool, content: MessageContent) -> Self {
-        Self { reply, content }
-    }
-
-    pub fn text(reply: bool, text: impl Into<String>) -> Self {
-        Self::new(reply, MessageContent::text(text))
-    }
+pub enum ImageData {
+    Base64(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReplyTarget {
     pub channel_id: String,
     pub message_id: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BotCommand {
+    ReplyTo {
+        target: ReplyTarget,
+        content: MessageContent,
+    },
+    SendChannel {
+        channel_id: String,
+        content: MessageContent,
+    },
+    SendDirect {
+        actor_id: String,
+        content: MessageContent,
+    },
+}
+
+impl BotCommand {
+    pub fn reply_text(target: ReplyTarget, text: impl Into<String>) -> Self {
+        Self::ReplyTo {
+            target,
+            content: MessageContent::text(text),
+        }
+    }
+
+    pub fn channel_text(channel_id: impl Into<String>, text: impl Into<String>) -> Self {
+        Self::SendChannel {
+            channel_id: channel_id.into(),
+            content: MessageContent::text(text),
+        }
+    }
+
+    pub fn direct_text(actor_id: impl Into<String>, text: impl Into<String>) -> Self {
+        Self::SendDirect {
+            actor_id: actor_id.into(),
+            content: MessageContent::text(text),
+        }
+    }
 }

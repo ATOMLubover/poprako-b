@@ -282,12 +282,12 @@ mod tests {
             .route("/register", get(register_handler))
             .route("/call", post(call_handler))
             .with_state(state);
-        let (shutdown, shutdown_rx) = oneshot::channel();
+        let (shutdown, shutdown_recv) = oneshot::channel();
 
         tokio::spawn(async move {
             axum::serve(listener, app)
                 .with_graceful_shutdown(async move {
-                    let _ = shutdown_rx.await;
+                    let _ = shutdown_recv.await;
                 })
                 .await
                 .expect("run test server");

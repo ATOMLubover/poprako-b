@@ -1,11 +1,13 @@
 use rand::Rng;
-use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use onebot_v11::MessageSegment;
-use onebot_v11::api::payload::{ApiPayload, SendPrivateMsg};
-use onebot_v11::connect::ws_reverse::ReverseWsConnect;
+use tokio::sync::mpsc;
 use tokio::time::sleep;
+
+#[derive(Debug)]
+pub struct KeepaliveTrigger {
+    pub texts: Vec<String>,
+}
 
 /// Return the current hour in local time (assumes UTC+8 / China Standard Time).
 fn local_hour() -> u64 {
@@ -13,11 +15,10 @@ fn local_hour() -> u64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
-    // UTC+8 → add 8 hours, wrap at 24.
+
     ((since_epoch % 86_400) / 3_600 + 8) % 24
 }
 
-/// Pool of keep-alive messages sent to self during quiet periods.
 const KEEPALIVE_MESSAGES: &[&str] = &[
     "白杨子心跳检测 ✓",
     "白杨子运行中，一切正常",
@@ -43,47 +44,35 @@ const KEEPALIVE_MESSAGES: &[&str] = &[
     "保持在线，随时响应",
 ];
 
-/// Spawn an independent keep-alive task so incoming events (including
-/// non-message heartbeat/meta events from NapCat) never cancel the timer.
-pub fn spawn_keepalive_task(conn: Arc<ReverseWsConnect>, self_id: i64) {
-    tokio::spawn(async move {
-        loop {
-            let interval_secs = rand::thread_rng().gen_range(120..=300);
-            sleep(Duration::from_secs(interval_secs)).await;
+pub fn watch_keepalive() -> anyhow::Result<mpsc::Receiver<KeepaliveTrigger>> {
+    let (send, recv) = mpsc::channel(1);
+    tokio::spawn(keepalive_watchdog(send));
 
-            let hour = local_hour();
-            if (1..9).contains(&hour) {
-                tracing::debug!("keep-alive skipped: hour={hour} in quiet period (1-9)");
-                continue;
-            }
+    Ok(recv)
+}
 
-            let count = rand::thread_rng().gen_range(1..=3);
-            tracing::info!("keep-alive: sending {count} message(s) to self");
+async fn keepalive_watchdog(send: mpsc::Sender<KeepaliveTrigger>) {
+    loop {
+        let interval_secs = rand::thread_rng().gen_range(120..=300);
+        sleep(Duration::from_secs(interval_secs)).await;
 
-            for i in 0..count {
-                let idx = rand::thread_rng().gen_range(0..KEEPALIVE_MESSAGES.len());
-                let text = KEEPALIVE_MESSAGES[idx];
-
-                let payload = ApiPayload::SendPrivateMsg(SendPrivateMsg {
-                    user_id: self_id,
-                    message: vec![MessageSegment::text(text)],
-                    auto_escape: false,
-                });
-
-                match conn.clone().call_api(payload).await {
-                    Ok(_) => {
-                        tracing::info!("keep-alive {}/{} sent: {text}", i + 1, count);
-                    }
-                    Err(e) => {
-                        tracing::warn!("keep-alive message {}/{} failed: {e}", i + 1, count);
-                    }
-                }
-
-                // Small gap between consecutive messages to avoid burst rate-limit.
-                if i + 1 < count {
-                    sleep(Duration::from_secs(2)).await;
-                }
-            }
+        let hour = local_hour();
+        if (1..9).contains(&hour) {
+            tracing::debug!("keepalive skipped: hour={} in quiet period (1-9)", hour);
+            continue;
         }
-    });
+
+        let count = rand::thread_rng().gen_range(1..=3);
+        let texts = (0..count)
+            .map(|_| {
+                let idx = rand::thread_rng().gen_range(0..KEEPALIVE_MESSAGES.len());
+                KEEPALIVE_MESSAGES[idx].to_string()
+            })
+            .collect();
+
+        if send.send(KeepaliveTrigger { texts }).await.is_err() {
+            tracing::warn!("keepalive receiver dropped, watchdog exiting");
+            return;
+        }
+    }
 }
