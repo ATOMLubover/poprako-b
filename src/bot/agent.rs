@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 use tool::build_tools;
 
-use crate::ai::agent::compact::sliding_window_compact;
+use crate::ai::agent::compact::SlidingWindowCompact;
 use crate::ai::agent::tool::remote::RemoteProxy;
 use crate::ai::agent_impl::openai::{OpenAiAgent, OpenAiAgentBuilder};
 use crate::ai::resolver::context::ContextBuilder;
@@ -50,7 +50,7 @@ impl BotAgent {
         let agent = OpenAiAgentBuilder::new(context, resolver)
             .tools(tools)
             .remote_proxy(remote_proxy)
-            .compact(sliding_window_compact)
+            .compact(Box::new(SlidingWindowCompact::default()))
             .build();
 
         Ok(Self {
@@ -102,7 +102,7 @@ impl BotAgent {
 
         // Compact before solving to keep context within sliding window.
         // TODO: compact AFTER solving.
-        self.agent.compact();
+        self.agent.compact().await;
 
         self.agent.solve().await
     }

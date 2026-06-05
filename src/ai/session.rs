@@ -111,7 +111,7 @@ where
     pub async fn checkpoint_before_solution<AS, R, A>(
         &self,
         session_id: Uuid,
-        agent: &Agent<AS, M, R, A>,
+        agent: &Agent<M, R, AS, A>,
     ) -> anyhow::Result<Checkpoint>
     where
         AS: Send + Sync + 'static,
@@ -133,7 +133,7 @@ where
         &self,
         session_id: Uuid,
         solution_id: Uuid,
-        agent: &Agent<AS, M, R, A>,
+        agent: &Agent<M, R, AS, A>,
     ) -> anyhow::Result<Checkpoint>
     where
         AS: Send + Sync + 'static,
@@ -153,7 +153,7 @@ where
     /// Encode agent context into a `ContextSnapshot` via the codec.
     pub fn encode_snapshot<AS, R, A>(
         &self,
-        agent: &Agent<AS, M, R, A>,
+        agent: &Agent<M, R, AS, A>,
     ) -> anyhow::Result<ContextSnapshot>
     where
         AS: Send + Sync + 'static,
@@ -174,7 +174,7 @@ where
         session_id: Uuid,
         solution_id: Option<Uuid>,
         kind: CheckpointKind,
-        agent: &Agent<AS, M, R, A>,
+        agent: &Agent<M, R, AS, A>,
     ) -> anyhow::Result<Checkpoint>
     where
         AS: Send + Sync + 'static,
@@ -447,7 +447,7 @@ mod tests {
         }
     }
 
-    fn test_agent() -> Agent<(), ChatCompletionMessageParam, FakeResolver> {
+    fn test_agent() -> Agent<ChatCompletionMessageParam, FakeResolver> {
         let context = ContextBuilder::new("deepseek-v4-flash")
             .messages(vec![
                 ChatCompletionMessageParam::System {
