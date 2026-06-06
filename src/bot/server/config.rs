@@ -4,24 +4,6 @@ use anyhow::Context as _;
 use onebot_v11::connect::ws_reverse::ReverseWsConfig;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BotServerConfig {
-    pub reverse_ws: ReverseWebSockServerConfig,
-    pub self_id: String,
-}
-
-impl BotServerConfig {
-    pub fn from_env() -> anyhow::Result<Self> {
-        let reverse_ws = ReverseWebSockServerConfig::from_env()?;
-        let self_id = env::var("ACCOUNT").context("ACCOUNT not set in environment")?;
-
-        Ok(Self {
-            reverse_ws,
-            self_id,
-        })
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReverseWebSockServerConfig {
     pub host: String,
     pub port: u16,
@@ -72,5 +54,23 @@ impl From<ReverseWebSockServerConfig> for ReverseWsConfig {
             suffix: value.suffix,
             access_token: value.access_token,
         }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BotServerConfig {
+    pub reverse_ws: ReverseWebSockServerConfig,
+    pub self_id: String,
+}
+
+impl BotServerConfig {
+    pub fn from_env() -> anyhow::Result<Self> {
+        let reverse_ws = ReverseWebSockServerConfig::from_env()?;
+        let self_id = env::var("ACCOUNT").context("ACCOUNT not set in environment")?;
+
+        Ok(Self {
+            reverse_ws,
+            self_id,
+        })
     }
 }

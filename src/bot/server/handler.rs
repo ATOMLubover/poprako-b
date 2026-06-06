@@ -12,10 +12,6 @@ use crate::bot::state::BotState;
 type CommandFuture<'a> = Pin<Box<dyn Future<Output = Vec<BotCommand>> + 'a>>;
 type NoticeBody = Box<dyn Any + Send>;
 
-pub type ChannelHandlerBox = Box<dyn ChannelHandler>;
-pub type WatchBox = Box<dyn Watch>;
-pub type NoticeHandlerBox = Box<dyn NoticeHandler>;
-
 pub trait ChannelHandler: Send {
     fn call<'a>(&'a self, state: &'a mut BotState, message: ChannelMessage) -> CommandFuture<'a>;
 }
@@ -29,6 +25,8 @@ where
     }
 }
 
+pub type ChannelHandlerBox = Box<dyn ChannelHandler>;
+
 pub struct Notice {
     pub index: usize,
     pub body: NoticeBody,
@@ -37,6 +35,8 @@ pub struct Notice {
 pub trait NoticeHandler {
     fn call<'a>(&'a self, state: &'a mut BotState, body: NoticeBody) -> CommandFuture<'a>;
 }
+
+pub type NoticeHandlerBox = Box<dyn NoticeHandler>;
 
 pub struct NoticeCall<N, H> {
     handler: H,
@@ -68,6 +68,8 @@ where
 pub trait Watch: Send {
     fn spawn(self: Box<Self>, index: usize, send: mpsc::Sender<Notice>) -> anyhow::Result<()>;
 }
+
+pub type WatchBox = Box<dyn Watch>;
 
 struct NoticeWatch<N, S> {
     source: S,

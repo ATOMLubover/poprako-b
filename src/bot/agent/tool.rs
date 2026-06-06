@@ -19,6 +19,14 @@ use crate::bot::agent::tool::poprako_s::{
 };
 use crate::http::HttpClient;
 
+fn normalize_base_url(mut url: Url) -> Url {
+    let path = url.path();
+    if !path.ends_with('/') {
+        url.set_path(&format!("{}/", path));
+    }
+    url
+}
+
 pub async fn build_tools() -> Vec<DynTool> {
     let memory_dir = memory_dir();
 
@@ -84,12 +92,4 @@ pub async fn build_tools() -> Vec<DynTool> {
     tools.push(Box::new(ListUserAssignmentsTool::new(prks_client)));
 
     tools
-}
-
-fn normalize_base_url(mut url: Url) -> Url {
-    let path = url.path();
-    if !path.ends_with('/') {
-        url.set_path(&format!("{}/", path));
-    }
-    url
 }

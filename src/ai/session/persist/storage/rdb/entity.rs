@@ -12,16 +12,6 @@ use crate::ai::session::persist::data_object::hash_message;
 
 // ── Session ──────────────────────────────────────────────────────────────────
 
-pub struct SessionEntity {
-    pub id: Uuid,
-    pub name: Option<String>,
-    pub model: String,
-    pub status: SessionStatus,
-    pub forked_from_checkpoint_id: Option<Uuid>,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-}
-
 pub enum SessionStatus {
     Active,
     Archived,
@@ -49,6 +39,16 @@ impl SessionStatus {
             Self::Archived => data_object::Status::Archived,
         }
     }
+}
+
+pub struct SessionEntity {
+    pub id: Uuid,
+    pub name: Option<String>,
+    pub model: String,
+    pub status: SessionStatus,
+    pub forked_from_checkpoint_id: Option<Uuid>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
 }
 
 impl SessionEntity {
@@ -110,18 +110,6 @@ pub fn upsert_row(message: &Message) -> (Uuid, Vec<u8>) {
 
 // ── Checkpoint ───────────────────────────────────────────────────────────────
 
-pub struct CheckpointEntity {
-    pub id: Uuid,
-    pub session_id: Uuid,
-    pub solution_id: Option<Uuid>,
-    pub kind: CheckpointKindValue,
-    pub model: String,
-    pub base_checkpoint_id: Option<Uuid>,
-    pub created_at: DateTime<Utc>,
-    /// Local message refs (only the suffix beyond the base).
-    pub message_refs: Vec<data_object::CheckpointMessageRef>,
-}
-
 pub enum CheckpointKindValue {
     BeforeSolution,
     AfterSolution,
@@ -161,6 +149,18 @@ impl CheckpointKindValue {
             Self::Fork => CheckpointKind::Fork,
         }
     }
+}
+
+pub struct CheckpointEntity {
+    pub id: Uuid,
+    pub session_id: Uuid,
+    pub solution_id: Option<Uuid>,
+    pub kind: CheckpointKindValue,
+    pub model: String,
+    pub base_checkpoint_id: Option<Uuid>,
+    pub created_at: DateTime<Utc>,
+    /// Local message refs (only the suffix beyond the base).
+    pub message_refs: Vec<data_object::CheckpointMessageRef>,
 }
 
 impl CheckpointEntity {

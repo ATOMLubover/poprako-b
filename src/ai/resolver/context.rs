@@ -62,6 +62,16 @@ where
         self.messages.push(message);
     }
 
+    /// Insert a message immediately before the current last message.
+    /// If the context has no messages, no message is inserted.
+    pub fn inject_before_last(&mut self, message: AnnotatedMessage<M, A>) {
+        let Some(index) = self.messages.len().checked_sub(1) else {
+            return;
+        };
+
+        self.messages.insert(index, message);
+    }
+
     pub fn take_annotated_messages(&mut self) -> Vec<AnnotatedMessage<M, A>> {
         std::mem::take(&mut self.messages)
     }

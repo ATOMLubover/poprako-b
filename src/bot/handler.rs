@@ -9,28 +9,46 @@ use crate::bot::message::MessagePart;
 use crate::bot::scheduled_task::ScheduledSpamTrigger;
 use crate::bot::state::BotState;
 
-pub async fn handle_channel_message(state: &mut BotState, msg: ChannelMessage) -> Vec<BotCommand> {
-    tracing::info!(
-        channel_id = msg.channel_id.as_str(),
-        actor_id = msg.actor.id.as_str(),
-        raw_message = msg.raw_text.as_str(),
-        "received channel message"
-    );
+/// Extract text after @bot at the beginning of the message (skipping Reply segments).
+fn try_extract_at(msg: &ChannelMessage, self_id: &str) -> Option<String> {
+    let mut iter = msg
+        .content
+        .parts
+        .iter()
+        .skip_while(|part| matches!(part, MessagePart::Reply { .. }));
 
-    if state.is_self(&msg.actor.id) {
-        return Vec::new();
+    match iter.next()? {
+        MessagePart::Mention { actor_id } if actor_id == self_id => {}
+        _ => return None,
     }
 
-    if msg.is_pure_text() {
-        state.push_history_text(msg.raw_text.clone());
+    let text: String = iter
+        .filter_map(|part| match part {
+            MessagePart::Text(text) => Some(text.as_str()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("")
+        .trim()
+        .to_string();
+
+    if text.is_empty() { None } else { Some(text) }
+}
+
+/// Extract text after `/prk` prefix from raw_message.
+fn try_extract_prk(msg: &ChannelMessage) -> Option<String> {
+    let text = msg.raw_text.strip_prefix("/prk")?.trim().to_string();
+    if text.is_empty() { None } else { Some(text) }
+}
+
+fn extract_user_text(msg: &ChannelMessage) -> Option<String> {
+    // Try @bot at beginning first
+    if let Some(text) = try_extract_at(msg, &msg.self_id) {
+        return Some(text);
     }
 
-    let reply = try_repeat(state, &msg);
-    if !reply.is_empty() {
-        return reply;
-    }
-
-    bot_answer(state, msg).await
+    // Fall back to /prk prefix
+    try_extract_prk(msg)
 }
 
 fn try_repeat(state: &mut BotState, msg: &ChannelMessage) -> Vec<BotCommand> {
@@ -111,46 +129,28 @@ async fn bot_answer(state: &mut BotState, msg: ChannelMessage) -> Vec<BotCommand
         .collect()
 }
 
-fn extract_user_text(msg: &ChannelMessage) -> Option<String> {
-    // Try @bot at beginning first
-    if let Some(text) = try_extract_at(msg, &msg.self_id) {
-        return Some(text);
+pub async fn handle_channel_message(state: &mut BotState, msg: ChannelMessage) -> Vec<BotCommand> {
+    tracing::info!(
+        channel_id = msg.channel_id.as_str(),
+        actor_id = msg.actor.id.as_str(),
+        raw_message = msg.raw_text.as_str(),
+        "received channel message"
+    );
+
+    if state.is_self(&msg.actor.id) {
+        return Vec::new();
     }
 
-    // Fall back to /prk prefix
-    try_extract_prk(msg)
-}
-
-/// Extract text after @bot at the beginning of the message (skipping Reply segments).
-fn try_extract_at(msg: &ChannelMessage, self_id: &str) -> Option<String> {
-    let mut iter = msg
-        .content
-        .parts
-        .iter()
-        .skip_while(|part| matches!(part, MessagePart::Reply { .. }));
-
-    match iter.next()? {
-        MessagePart::Mention { actor_id } if actor_id == self_id => {}
-        _ => return None,
+    if msg.is_pure_text() {
+        state.push_history_text(msg.raw_text.clone());
     }
 
-    let text: String = iter
-        .filter_map(|part| match part {
-            MessagePart::Text(text) => Some(text.as_str()),
-            _ => None,
-        })
-        .collect::<Vec<_>>()
-        .join("")
-        .trim()
-        .to_string();
+    let reply = try_repeat(state, &msg);
+    if !reply.is_empty() {
+        return reply;
+    }
 
-    if text.is_empty() { None } else { Some(text) }
-}
-
-/// Extract text after `/prk` prefix from raw_message.
-fn try_extract_prk(msg: &ChannelMessage) -> Option<String> {
-    let text = msg.raw_text.strip_prefix("/prk")?.trim().to_string();
-    if text.is_empty() { None } else { Some(text) }
+    bot_answer(state, msg).await
 }
 
 pub async fn handle_system_prompt_refresh(
@@ -159,6 +159,14 @@ pub async fn handle_system_prompt_refresh(
 ) -> Vec<BotCommand> {
     state.agent_mut().reload_system_prompt(content);
     Vec::new()
+}
+
+fn image_content(image_base64: String) -> MessageContent {
+    MessageContent {
+        parts: vec![MessagePart::Image {
+            data: ImageData::Base64(image_base64),
+        }],
+    }
 }
 
 pub async fn handle_scheduled_spam_trigger(
@@ -194,12 +202,4 @@ pub async fn handle_keepalive_trigger(
         .into_iter()
         .map(|text| BotCommand::direct_text(state.self_id(), text))
         .collect()
-}
-
-fn image_content(image_base64: String) -> MessageContent {
-    MessageContent {
-        parts: vec![MessagePart::Image {
-            data: ImageData::Base64(image_base64),
-        }],
-    }
 }

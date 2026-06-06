@@ -15,10 +15,6 @@ use crate::ai::resolver::message::MessageOwned;
 use crate::ai::resolver::message::MessageRef;
 use crate::bot::agent::memory_dir;
 
-pub fn plugin_memory_shard() -> MemoryShardPlugin {
-    MemoryShardPlugin
-}
-
 pub struct MemoryShardPlugin;
 
 impl<M, R, S, A> IAgentPlugin<M, R, S, A> for MemoryShardPlugin
@@ -31,6 +27,10 @@ where
     fn apply(&self, builder: AgentBuilder<M, R, S, A>) -> AgentBuilder<M, R, S, A> {
         builder.interceptor(MemoryShardInterceptor::<M, S, A>::new(memory_dir()))
     }
+}
+
+pub fn plugin_memory_shard() -> MemoryShardPlugin {
+    MemoryShardPlugin
 }
 
 struct MemoryShardInterceptor<M, S, A> {
@@ -103,11 +103,7 @@ where
     S: Send + Sync + 'static,
     A: Default + Send + Sync + 'static,
 {
-    async fn before_solve(
-        &mut self,
-        _state: &mut S,
-        cx: &mut Context<M, A>,
-    ) -> InterceptorFlow {
+    async fn before_solve(&mut self, _state: &mut S, cx: &mut Context<M, A>) -> InterceptorFlow {
         let Some(_user_text) = latest_user_text(cx) else {
             return InterceptorFlow::Continue;
         };
@@ -122,7 +118,8 @@ where
             Use recall_memory_shard to read a shard's full content by name:\n\n";
         let content = format!("{}{}", prefix, shards);
 
-        inject_before_latest_message(cx, content);
+        let injected = M::from(MessageOwned::User { content });
+        cx.inject_before_last(AnnotatedMessage::new(injected, A::default()));
         InterceptorFlow::Continue
     }
 }
@@ -138,29 +135,6 @@ where
     }
 }
 
-fn inject_before_latest_message<M, A>(cx: &mut Context<M, A>, content: String)
-where
-    M: IMessage + Send + Sync + 'static,
-    A: Default,
-{
-    let mut messages = cx.take_annotated_messages();
-    let latest = match messages.pop() {
-        Some(msg) => msg,
-        None => {
-            cx.set_annotated_messages(messages);
-            return;
-        }
-    };
-
-    let injected = M::from(MessageOwned::User {
-        content,
-    });
-    let annotation = A::default();
-    messages.push(AnnotatedMessage::new(injected, annotation));
-    messages.push(latest);
-    cx.set_annotated_messages(messages);
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -172,10 +146,9 @@ mod tests {
 
     #[tokio::test]
     async fn injects_shard_list_before_user_message() {
-        let mut interceptor =
-            MemoryShardInterceptor::<ChatCompletionMessageParam, (), ()>::new(
-                PathBuf::from("memory"),
-            );
+        let mut interceptor = MemoryShardInterceptor::<ChatCompletionMessageParam, (), ()>::new(
+            PathBuf::from("memory"),
+        );
         let mut state = ();
         let mut cx =
             ContextBuilder::<ChatCompletionMessageParam>::new("test-model")
@@ -187,7 +160,10 @@ mod tests {
 
         interceptor.before_solve(&mut state, &mut cx).await;
 
-        assert!(cx.message_count() >= 2, "should inject at least one shard message before user message");
+        assert!(
+            cx.message_count() >= 2,
+            "should inject at least one shard message before user message"
+        );
 
         // The injected message should be at second-to-last position, user message at last.
         let injected_idx = cx.message_count() - 2;
@@ -202,7 +178,13 @@ mod tests {
         }
 
         // The last message should still be the original user message.
-        match cx.annotated_messages().last().unwrap().message.message_ref() {
+        match cx
+            .annotated_messages()
+            .last()
+            .unwrap()
+            .message
+            .message_ref()
+        {
             MessageRef::User { content } => {
                 assert!(
                     content.contains("hello"),
@@ -215,16 +197,18 @@ mod tests {
 
     #[tokio::test]
     async fn skips_when_no_user_message() {
-        let mut interceptor =
-            MemoryShardInterceptor::<ChatCompletionMessageParam, (), ()>::new(
-                PathBuf::from("memory"),
-            );
+        let mut interceptor = MemoryShardInterceptor::<ChatCompletionMessageParam, (), ()>::new(
+            PathBuf::from("memory"),
+        );
         let mut state = ();
-        let mut cx =
-            ContextBuilder::<ChatCompletionMessageParam>::new("test-model").build();
+        let mut cx = ContextBuilder::<ChatCompletionMessageParam>::new("test-model").build();
 
         interceptor.before_solve(&mut state, &mut cx).await;
 
-        assert_eq!(cx.message_count(), 0, "should not inject when context is empty");
+        assert_eq!(
+            cx.message_count(),
+            0,
+            "should not inject when context is empty"
+        );
     }
 }
