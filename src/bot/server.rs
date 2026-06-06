@@ -1,201 +1,133 @@
 pub mod config;
-
-use rand::Rng;
-use std::sync::Arc;
-use std::time::Duration;
-
-use crate::bot::agent::BotAgent;
-use crate::bot::agent::prompt::spawn_refresh_system_promt_task;
-use crate::bot::handler::handle_group_message;
-use crate::bot::keepalive::spawn_keepalive_task;
-use crate::bot::message::{InputMessage, OutputMessage};
-use crate::bot::scheduled_task::spawn_spam_task;
-use crate::bot::server::config::BotServerConfig;
-use crate::bot::state::BotState;
+mod handler;
+mod onebot;
 
 use anyhow::Context as _;
-use onebot_v11::api::payload::{ApiPayload, SendGroupMsg};
+use onebot_v11::Event;
 use onebot_v11::connect::ws_reverse::ReverseWsConnect;
-use onebot_v11::event::message::Message as OneBotMessage;
-use onebot_v11::{Event, MessageSegment};
 use tokio::sync::broadcast::error::RecvError;
+use tokio::sync::mpsc;
 
-const FIRST_REPLY_DELAY_MS: std::ops::Range<u64> = 2000..5000;
-const BATCH_REPLY_DELAY_MS: std::ops::Range<u64> = 2000..3000;
+use crate::bot::message::BotCommand;
+use crate::bot::message::ChannelMessage;
+use crate::bot::server::config::ReverseWebSockServerConfig;
+use crate::bot::server::handler::ChannelHandlerBox;
+use crate::bot::server::handler::Notice;
+use crate::bot::server::handler::NoticeHandlerBox;
+use crate::bot::server::handler::WatchBox;
+use crate::bot::server::handler::WatchPair;
+use crate::bot::server::onebot::OneBotSender;
+use crate::bot::server::onebot::channel_message_from_event;
+use crate::bot::state::BotState;
 
 pub struct BotServer {
-    conn: Arc<ReverseWsConnect>,
     state: BotState,
+    onebot_config: Option<ReverseWebSockServerConfig>,
+    channel_handler: Option<ChannelHandlerBox>,
+    watches: Vec<WatchBox>,
+    notice_handlers: Vec<NoticeHandlerBox>,
 }
 
 impl BotServer {
-    pub async fn from_env() -> anyhow::Result<Self> {
-        Self::new(BotServerConfig::from_env()?).await
+    pub fn new(state: BotState) -> Self {
+        Self {
+            state,
+            onebot_config: None,
+            channel_handler: None,
+            watches: Vec::new(),
+            notice_handlers: Vec::new(),
+        }
     }
 
-    pub async fn new(config: BotServerConfig) -> anyhow::Result<Self> {
-        let conn = ReverseWsConnect::new(config.reverse_ws.into()).await?;
+    pub fn with_onebot_from_env(self) -> anyhow::Result<Self> {
+        Ok(self.with_onebot(ReverseWebSockServerConfig::from_env()?))
+    }
 
-        let agent = BotAgent::new().await?;
-        let state = BotState::new(agent, config.self_qid);
+    pub fn with_onebot(mut self, config: ReverseWebSockServerConfig) -> Self {
+        self.onebot_config = Some(config);
+        self
+    }
 
-        Ok(Self { conn, state })
+    pub fn on_channel_message<F>(mut self, handler: F) -> Self
+    where
+        F: for<'a> AsyncFn(&'a mut BotState, ChannelMessage) -> Vec<BotCommand> + Send + 'static,
+    {
+        self.channel_handler = Some(Box::new(handler));
+        self
+    }
+
+    pub fn on_notice<N, S, H>(mut self, source: S, handler: H) -> Self
+    where
+        N: Send + 'static,
+        S: FnOnce() -> anyhow::Result<mpsc::Receiver<N>> + Send + 'static,
+        H: for<'a> AsyncFn(&'a mut BotState, N) -> Vec<BotCommand> + Send + 'static,
+    {
+        let pair = WatchPair::new(source, handler);
+        self.watches.push(pair.watch);
+        self.notice_handlers.push(pair.handler);
+        self
     }
 
     pub async fn serve(mut self) -> anyhow::Result<()> {
-        let reply_sender = GroupReplySender::new(self.conn.clone());
-        let self_qid = self.state.self_qid();
+        let config = self
+            .onebot_config
+            .take()
+            .context("BotServer is missing OneBot configuration")?;
 
-        spawn_keepalive_task(self.conn.clone(), self_qid);
-        spawn_spam_task(self.conn.clone(), self_qid);
+        let connect = ReverseWsConnect::new(config.into()).await?;
+        let sender = OneBotSender::new(connect.clone());
+        let mut event_recv = connect.subscribe().await;
+        let (notice_send, mut notice_recv) = mpsc::channel::<Notice>(32);
 
-        let mut event_recv = self.conn.subscribe().await;
-        let mut prompt_recv = spawn_refresh_system_promt_task()?;
+        for (index, watch) in self.watches.drain(..).enumerate() {
+            watch.spawn(index, notice_send.clone())?;
+        }
 
+        drop(notice_send);
+
+        let mut notices_closed = false;
         loop {
             tokio::select! {
                 event = event_recv.recv() => {
-                    self.handle_event(event, &reply_sender).await;
+                    self.handle_onebot_event(event, &sender).await;
                 }
-                prompt = prompt_recv.recv() => {
-                    if !self.handle_prompt_reload(prompt) {
-                        break Ok(());
+                notice = notice_recv.recv(), if !notices_closed => {
+                    match notice {
+                        Some(notice) => self.handle_notice(notice, &sender).await,
+                        None => {
+                            notices_closed = true;
+                            tracing::warn!("all notice sources stopped");
+                        }
                     }
                 }
             }
         }
     }
 
-    async fn handle_event(
+    async fn handle_onebot_event(
         &mut self,
         event: Result<Event, RecvError>,
-        reply_sender: &GroupReplySender,
+        sender: &OneBotSender,
     ) {
-        let Some(message) = filter_group_message(&mut self.state, event) else {
+        let Some(message) = channel_message_from_event(event) else {
             return;
         };
 
-        let outputs = handle_group_message(&mut self.state, &message).await;
-        if outputs.is_empty() {
+        let Some(handler) = self.channel_handler.as_ref() else {
             return;
-        }
-
-        reply_sender.send_batch(message, outputs).await;
-    }
-
-    /// Returns `true` if the loop should continue, `false` if the channel closed.
-    fn handle_prompt_reload(&mut self, new_prompt: Option<String>) -> bool {
-        match new_prompt {
-            Some(content) => {
-                self.state.agent_mut().reload_system_prompt(content);
-                true
-            }
-            None => {
-                tracing::warn!("prompt refresh channel closed, stopping reloads");
-                false
-            }
-        }
-    }
-}
-
-struct GroupReplySender {
-    conn: Arc<ReverseWsConnect>,
-}
-
-impl GroupReplySender {
-    fn new(conn: Arc<ReverseWsConnect>) -> Self {
-        Self { conn }
-    }
-
-    async fn send_batch(&self, message: InputMessage, outputs: Vec<OutputMessage>) {
-        sleep_random(FIRST_REPLY_DELAY_MS).await;
-
-        let total = outputs.len();
-        for (i, output) in outputs.into_iter().enumerate() {
-            if let Err(error) = self.send_one(&message, output).await {
-                tracing::error!("failed to reply to group message: {error}");
-                break;
-            }
-
-            if i + 1 < total {
-                sleep_random(BATCH_REPLY_DELAY_MS).await;
-            }
-        }
-    }
-
-    async fn send_one(&self, incoming: &InputMessage, output: OutputMessage) -> anyhow::Result<()> {
-        if output.segments().is_empty() {
-            return Ok(());
-        }
-
-        let group_id = incoming
-            .group_id()
-            .context("group reply is missing target group id")?;
-        let message = if output.reply {
-            let message_id = incoming
-                .message_id()
-                .context("group reply is missing source message id")?;
-
-            let mut parts = Vec::with_capacity(output.segments().len() + 1);
-
-            parts.push(MessageSegment::reply(message_id.to_string()));
-            parts.extend(output.into_segments());
-
-            parts
-        } else {
-            output.into_segments()
         };
 
-        let payload = ApiPayload::SendGroupMsg(SendGroupMsg {
-            group_id,
-            message,
-            auto_escape: false,
-        });
-
-        self.conn.clone().call_api(payload).await?;
-
-        Ok(())
-    }
-}
-
-fn filter_group_message(
-    state: &mut BotState,
-    event: Result<Event, RecvError>,
-) -> Option<InputMessage> {
-    let event = receive_event(event)?;
-
-    let message = extract_group_message(event)?;
-
-    if message.user_id().is_some_and(|qid| state.is_self(qid)) {
-        return None;
+        let commands = handler.call(&mut self.state, message).await;
+        sender.send_batch(commands, true).await;
     }
 
-    if message.is_pure_text() {
-        state.push_history(message.clone());
+    async fn handle_notice(&mut self, notice: Notice, sender: &OneBotSender) {
+        let Some(handler) = self.notice_handlers.get(notice.index) else {
+            tracing::warn!("missing notice handler for index {}", notice.index);
+            return;
+        };
+
+        let commands = handler.call(&mut self.state, notice.body).await;
+        sender.send_batch(commands, false).await;
     }
-
-    Some(message)
-}
-
-fn receive_event(event: Result<Event, RecvError>) -> Option<Event> {
-    if let Err(e) = &event {
-        tracing::error!("failed to receive event: {e}");
-        return None;
-    }
-
-    event.ok()
-}
-
-fn extract_group_message(event: Event) -> Option<InputMessage> {
-    match event {
-        Event::Message(OneBotMessage::GroupMessage(group_message)) => {
-            Some(InputMessage::from_group_message(group_message))
-        }
-        _ => None,
-    }
-}
-
-async fn sleep_random(range: std::ops::Range<u64>) {
-    let delay_ms = rand::thread_rng().gen_range(range);
-    tokio::time::sleep(Duration::from_millis(delay_ms)).await;
 }

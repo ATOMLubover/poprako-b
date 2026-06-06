@@ -8,7 +8,7 @@ use crate::ai::agent::tool::result::CallOutput;
 use crate::ai::agent::tool::result::CallResult;
 use crate::ai::agent::tool::result::ExecutionError;
 use crate::ai::agent::tool::result::ExecutionResult;
-use crate::ai::resolver::tool::{IToolCall, ToolDef};
+use crate::ai::resolver::tool::{IToolCall, ToolDefination};
 use crate::http::HttpClient;
 
 const CONFIG_PATH: &str = "remote_tool.json";
@@ -32,7 +32,7 @@ async fn load_config() -> anyhow::Result<RemoteToolConfig> {
 }
 
 struct RemoteTool {
-    defination: ToolDef, // TODO: redundant
+    defination: ToolDefination, // TODO: redundant
     call_url: Url,
 }
 
@@ -95,8 +95,8 @@ impl RemoteProxy {
         Ok(proxy)
     }
 
-    pub fn tool_definations(&self) -> Vec<ToolDef> {
-        let mut definations: Vec<ToolDef> =
+    pub fn tool_definations(&self) -> Vec<ToolDefination> {
+        let mut definations: Vec<ToolDefination> =
             self.tools.values().map(|t| t.defination.clone()).collect();
         definations.sort_by(|a, b| a.name.cmp(&b.name));
 
@@ -128,7 +128,7 @@ impl RemoteProxy {
 
         #[derive(Deserialize)]
         struct RemoteToolRegisterItem {
-            defination: ToolDef,
+            defination: ToolDefination,
             call_url: Url,
         }
 
@@ -282,12 +282,12 @@ mod tests {
             .route("/register", get(register_handler))
             .route("/call", post(call_handler))
             .with_state(state);
-        let (shutdown, shutdown_rx) = oneshot::channel();
+        let (shutdown, shutdown_recv) = oneshot::channel();
 
         tokio::spawn(async move {
             axum::serve(listener, app)
                 .with_graceful_shutdown(async move {
-                    let _ = shutdown_rx.await;
+                    let _ = shutdown_recv.await;
                 })
                 .await
                 .expect("run test server");

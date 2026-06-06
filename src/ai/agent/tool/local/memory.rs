@@ -4,7 +4,7 @@ use serde::Deserialize;
 
 use crate::ai::agent::tool::ITool;
 use crate::ai::agent::tool::result::{ExecutionError, ExecutionResult};
-use crate::ai::resolver::tool::{ParamDef, PropDef, ToolDef};
+use crate::ai::resolver::tool::{ParamDef, PropDef, ToolDefination};
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -12,16 +12,16 @@ use crate::ai::resolver::tool::{ParamDef, PropDef, ToolDef};
 
 /// Parsed front-matter of a shard.md file.
 #[derive(Debug, Deserialize)]
-struct ShardMeta {
-    name: String,
-    description: String,
-    tags: Vec<String>,
+pub struct ShardMeta {
+    pub name: String,
+    pub description: String,
+    pub tags: Vec<String>,
 }
 
 /// Parse `---\n...\n---` YAML front-matter from markdown text.
 ///
 /// Returns `(ShardMeta, body_after_frontmatter)`.
-fn parse_frontmatter(raw: &str) -> Result<(ShardMeta, String), String> {
+pub fn parse_frontmatter(raw: &str) -> Result<(ShardMeta, String), String> {
     let mut sections = raw.splitn(3, "---");
     let _empty_before = sections.next(); // skip leading empty
     let yaml_block = sections
@@ -55,8 +55,8 @@ impl ListMemoryShardsTool {
 
 #[async_trait::async_trait]
 impl ITool for ListMemoryShardsTool {
-    fn defination(&self) -> ToolDef {
-        ToolDef::new(
+    fn defination(&self) -> ToolDefination {
+        ToolDefination::new(
             "list_memory_shards",
             "List all available memory shards with their name, description, and tags. \
              Call this first to discover which shards exist, then use recall_memory_shard \
@@ -136,7 +136,7 @@ impl RecallMemoryShardTool {
 
 #[async_trait::async_trait]
 impl ITool for RecallMemoryShardTool {
-    fn defination(&self) -> ToolDef {
+    fn defination(&self) -> ToolDefination {
         let params = ParamDef::new("object")
             .with_properties(vec![(
                 "shard_name",
@@ -149,7 +149,7 @@ impl ITool for RecallMemoryShardTool {
             )])
             .with_required(vec!["shard_name".to_string()]);
 
-        ToolDef::new(
+        ToolDefination::new(
             "recall_memory_shard",
             "Recall the full content of a specific memory shard by name. \
              Use list_memory_shards first to discover available shard names.",
@@ -201,7 +201,7 @@ impl GenerateMemoryShardTool {
 
 #[async_trait::async_trait]
 impl ITool for GenerateMemoryShardTool {
-    fn defination(&self) -> ToolDef {
+    fn defination(&self) -> ToolDefination {
         let params = ParamDef::new("object")
             .with_properties(vec![
                 (
@@ -254,7 +254,7 @@ impl ITool for GenerateMemoryShardTool {
                 "content".to_string(),
             ]);
 
-        ToolDef::new(
+        ToolDefination::new(
             "generate_memory_shard",
             "Generate a new memory shard by creating a shard.md file under memory/shards/. \
              IMPORTANT: You MUST call recall_memory_shard with shard_name='how-to-create-shard' \
@@ -366,7 +366,7 @@ impl ModifyMemoryShardTool {
 
 #[async_trait::async_trait]
 impl ITool for ModifyMemoryShardTool {
-    fn defination(&self) -> ToolDef {
+    fn defination(&self) -> ToolDefination {
         let params = ParamDef::new("object")
             .with_properties(vec![
                 (
@@ -415,7 +415,7 @@ impl ITool for ModifyMemoryShardTool {
                 "new_text".to_string(),
             ]);
 
-        ToolDef::new(
+        ToolDefination::new(
             "modify_memory_shard",
             "Modify the body content of an existing memory shard. \
              IMPORTANT: You MUST first call recall_memory_shard to read the shard's current \

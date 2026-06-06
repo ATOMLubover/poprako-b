@@ -39,14 +39,14 @@ pub fn system_prompt() -> anyhow::Result<String> {
 /// Spawn a background task that polls the system prompt files every 30 seconds.
 /// When a file's `modified` timestamp changes, the task reloads the prompt and
 /// sends it through the returned receiver so the main event loop can apply it.
-pub fn spawn_refresh_system_promt_task() -> anyhow::Result<Receiver<String>> {
-    let (tx, rx) = mpsc::channel(1);
-    tokio::spawn(system_prompt_watchdog(tx));
+pub fn watch_system_prompt() -> anyhow::Result<Receiver<String>> {
+    let (send, recv) = mpsc::channel(1);
+    tokio::spawn(system_prompt_watchdog(send));
 
-    Ok(rx)
+    Ok(recv)
 }
 
-async fn system_prompt_watchdog(tx: Sender<String>) {
+async fn system_prompt_watchdog(send: Sender<String>) {
     let paths = prompt_paths();
     let last_mtimes = Mutex::new(HashMap::<PathBuf, SystemTime>::new());
 
@@ -91,7 +91,7 @@ async fn system_prompt_watchdog(tx: Sender<String>) {
         match system_prompt() {
             Ok(content) => {
                 tracing::info!("system prompt files changed, reloading...");
-                if tx.send(content).await.is_err() {
+                if send.send(content).await.is_err() {
                     tracing::warn!("prompt refresh receiver dropped, watchdog exiting");
                     break;
                 }

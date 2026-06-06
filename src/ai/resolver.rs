@@ -1,5 +1,3 @@
-pub mod openai;
-
 pub mod action;
 pub mod context;
 pub mod message;
@@ -16,10 +14,12 @@ use crate::ai::resolver::result::ResolveResult;
 pub trait IResolver {
     type Message: IMessage + 'static;
 
-    async fn resolve(
+    async fn resolve<A>(
         &mut self,
-        cx: &Context<Self::Message>,
-    ) -> ResolveResult<Action<<Self::Message as IMessage>::ToolCall>>;
+        cx: &Context<Self::Message, A>,
+    ) -> ResolveResult<Action<<Self::Message as IMessage>::ToolCall>>
+    where
+        A: Send + Sync + 'static;
 }
 
 pub mod result {

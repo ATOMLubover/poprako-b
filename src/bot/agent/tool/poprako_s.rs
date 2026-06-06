@@ -8,7 +8,7 @@ use serde::Serialize;
 
 use crate::ai::agent::tool::ITool;
 use crate::ai::agent::tool::result::{ExecutionError, ExecutionResult};
-use crate::ai::resolver::tool::{ParamDef, PropDef, ToolDef};
+use crate::ai::resolver::tool::{ParamDef, PropDef, ToolDefination};
 
 fn default_offset() -> i64 {
     0
@@ -52,7 +52,7 @@ impl ListMyMembersTool {
 
 #[async_trait::async_trait]
 impl ITool for ListMyMembersTool {
-    fn defination(&self) -> ToolDef {
+    fn defination(&self) -> ToolDefination {
         let params = ParamDef::new("object").with_properties(vec![
             (
                 "offset",
@@ -70,7 +70,7 @@ impl ITool for ListMyMembersTool {
             ),
         ]);
 
-        ToolDef::new(
+        ToolDefination::new(
             "list_my_members",
             "List current account memberships. includes is hardcoded to include team.",
             params,
@@ -111,7 +111,7 @@ impl ListTeamWorksetsTool {
 
 #[async_trait::async_trait]
 impl ITool for ListTeamWorksetsTool {
-    fn defination(&self) -> ToolDef {
+    fn defination(&self) -> ToolDefination {
         let params = ParamDef::new("object")
             .with_properties(vec![
                 (
@@ -138,7 +138,7 @@ impl ITool for ListTeamWorksetsTool {
             ])
             .with_required(vec!["team_id".to_string()]);
 
-        ToolDef::new(
+        ToolDefination::new(
             "list_team_worksets",
             "List worksets under one team.",
             params,
@@ -194,7 +194,7 @@ impl ListWorksetComicsTool {
 
 #[async_trait::async_trait]
 impl ITool for ListWorksetComicsTool {
-    fn defination(&self) -> ToolDef {
+    fn defination(&self) -> ToolDefination {
         let params = ParamDef::new("object")
             .with_properties(vec![
                 (
@@ -270,7 +270,7 @@ impl ITool for ListWorksetComicsTool {
             ])
             .with_required(vec!["workset_id".to_string()]);
 
-        ToolDef::new(
+        ToolDefination::new(
             "list_workset_comics",
             "List comics under one workset. includes is hardcoded.",
             params,
@@ -318,7 +318,7 @@ impl GetComicPinnedChapterTool {
 
 #[async_trait::async_trait]
 impl ITool for GetComicPinnedChapterTool {
-    fn defination(&self) -> ToolDef {
+    fn defination(&self) -> ToolDefination {
         let params = ParamDef::new("object")
             .with_properties(vec![(
                 "comic_id",
@@ -329,7 +329,7 @@ impl ITool for GetComicPinnedChapterTool {
             )])
             .with_required(vec!["comic_id".to_string()]);
 
-        ToolDef::new(
+        ToolDefination::new(
             "get_comic_pinned_chapter",
             "Get pinned chapter for one comic via /chapters/pinned.",
             params,
@@ -370,7 +370,7 @@ impl ListComicChaptersTool {
 
 #[async_trait::async_trait]
 impl ITool for ListComicChaptersTool {
-    fn defination(&self) -> ToolDef {
+    fn defination(&self) -> ToolDefination {
         let params = ParamDef::new("object")
             .with_properties(vec![
                 (
@@ -397,7 +397,7 @@ impl ITool for ListComicChaptersTool {
             ])
             .with_required(vec!["comic_id".to_string()]);
 
-        ToolDef::new(
+        ToolDefination::new(
             "list_comic_chapters",
             "List chapters under one comic. includes is hardcoded.",
             params,
@@ -438,7 +438,7 @@ impl ListChapterAssignmentsTool {
 
 #[async_trait::async_trait]
 impl ITool for ListChapterAssignmentsTool {
-    fn defination(&self) -> ToolDef {
+    fn defination(&self) -> ToolDefination {
         let params = ParamDef::new("object")
             .with_properties(vec![
                 (
@@ -465,7 +465,7 @@ impl ITool for ListChapterAssignmentsTool {
             ])
             .with_required(vec!["chapter_id".to_string()]);
 
-        ToolDef::new(
+        ToolDefination::new(
             "list_chapter_assignments",
             "List assignments under one chapter. includes is hardcoded.",
             params,
@@ -506,7 +506,7 @@ impl ListUserAssignmentsTool {
 
 #[async_trait::async_trait]
 impl ITool for ListUserAssignmentsTool {
-    fn defination(&self) -> ToolDef {
+    fn defination(&self) -> ToolDefination {
         let params = ParamDef::new("object")
             .with_properties(vec![
                 (
@@ -533,7 +533,7 @@ impl ITool for ListUserAssignmentsTool {
             ])
             .with_required(vec!["user_id".to_string()]);
 
-        ToolDef::new(
+        ToolDefination::new(
             "list_user_assignments",
             "List assignments of one user. includes is hardcoded.",
             params,

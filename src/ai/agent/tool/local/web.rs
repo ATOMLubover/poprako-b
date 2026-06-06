@@ -5,7 +5,7 @@ use serde::Deserialize;
 
 use crate::ai::agent::tool::ITool;
 use crate::ai::agent::tool::result::{ExecutionError, ExecutionResult};
-use crate::ai::resolver::tool::{ParamDef, PropDef, ToolDef};
+use crate::ai::resolver::tool::{ParamDef, PropDef, ToolDefination};
 
 // ---- Tavily API types ------------------------------------------------------
 
@@ -43,7 +43,7 @@ impl WebSearchTool {
 
 #[async_trait::async_trait]
 impl ITool for WebSearchTool {
-    fn defination(&self) -> ToolDef {
+    fn defination(&self) -> ToolDefination {
         let params = ParamDef::new("object")
             .with_properties(vec![
                 (
@@ -65,7 +65,7 @@ impl ITool for WebSearchTool {
             ])
             .with_required(vec!["query".to_string()]);
 
-        ToolDef::new(
+        ToolDefination::new(
             "web_search",
             "Search the web using Tavily. Returns titles, URLs, and content snippets. \
              Use this to access information beyond your knowledge cutoff or find \

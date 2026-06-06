@@ -1,20 +1,27 @@
-pub mod prompt;
+mod data;
+mod plugin;
+mod prompt;
+mod state;
 mod tool;
-mod value_object;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+use openai_oxide::types::chat::ChatCompletionMessageParam;
+use plugin::inspiration::plugin_inspiration;
+use plugin::memory_shard::plugin_memory_shard;
+use state::BotAgentState;
+use state::BotMessageAnnotation;
 use tool::build_tools;
 
-use crate::ai::agent::compact::sliding_window_compact;
-use crate::ai::agent::openai::{OpenAiAgent, OpenAiAgentBuilder};
+use crate::ai::agent::Agent;
+use crate::ai::agent::AgentBuilder;
 use crate::ai::agent::tool::remote::RemoteProxy;
 use crate::ai::resolver::context::ContextBuilder;
-use crate::ai::resolver::message::{MessageOwned, MessageRef};
-use crate::ai::resolver::openai::OpenAiResolver;
+use crate::ai::resolver::message::MessageOwned;
+use crate::ai::resolver_impl::openai::OpenAiResolver;
 use crate::bot::agent::prompt::system_prompt;
-use crate::bot::value_object::ChatMessage;
+use crate::bot::message::ChannelMessage;
 
 pub fn memory_dir() -> PathBuf {
     std::env::var("MEMORY_DIR")
@@ -22,11 +29,13 @@ pub fn memory_dir() -> PathBuf {
         .unwrap_or_else(|_| PathBuf::from("memory"))
 }
 
+pub use prompt::watch_system_prompt;
+
 const MODEL_NAME: &str = "deepseek-v4-flash";
 
 pub struct BotAgent {
-    agent: OpenAiAgent,
-    /// Map from user_qid to poprako-s user_id.
+    agent: Agent<ChatCompletionMessageParam, OpenAiResolver, BotAgentState, BotMessageAnnotation>,
+    /// Map from channel actor id to poprako-s user_id.
     id_transform: HashMap<String, String>,
 }
 
@@ -35,22 +44,24 @@ impl BotAgent {
         let resolver = OpenAiResolver::from_env();
 
         let system_prompt = system_prompt()?;
+
         let tools = build_tools().await;
         let remote_proxy = RemoteProxy::from_local_config().await.ok();
 
-        let context = ContextBuilder::new(MODEL_NAME)
+        let context = ContextBuilder::<_, BotMessageAnnotation>::new(MODEL_NAME)
             .messages(vec![
-                MessageRef::System {
-                    content: &system_prompt,
+                MessageOwned::System {
+                    content: system_prompt,
                 }
                 .into(),
             ])
             .build();
 
-        let agent = OpenAiAgentBuilder::new(context, resolver)
+        let agent = AgentBuilder::new_with_state(BotAgentState::default(), context, resolver)
             .tools(tools)
             .remote_proxy(remote_proxy)
-            .compact(sliding_window_compact)
+            .plugin(plugin_inspiration())
+            .plugin(plugin_memory_shard())
             .build();
 
         Ok(Self {
@@ -63,46 +74,52 @@ impl BotAgent {
     /// conversation history (messages[1..]).
     pub fn reload_system_prompt(&mut self, content: String) {
         self.agent
-            .replace_system_message(MessageOwned::System { content }.into());
+            .context_mut()
+            .set_system_message(MessageOwned::System { content }.into());
     }
 
-    pub async fn try_respond(&mut self, chat_message: ChatMessage) -> Option<String> {
-        let sender_qid = chat_message.meta().sender_qid().to_string();
+    pub async fn try_answer(&mut self, message: ChannelMessage, content: String) -> Option<String> {
+        let sender_id = message.actor.id.as_str();
         let sender_prks_id = self
             .id_transform
-            .get(&sender_qid)
+            .get(sender_id)
             .map(String::as_str)
-            .or_else(|| chat_message.meta().sender_prks_id());
+            .unwrap_or("-");
 
-        let chat_message = if sender_prks_id == chat_message.meta().sender_prks_id() {
-            chat_message
-        } else {
-            let meta = chat_message.meta();
-            ChatMessage::new(
-                crate::bot::value_object::ChatMessageMeta::new(
-                    meta.group_qid(),
-                    meta.group_name(),
-                    meta.sender_qid(),
-                    meta.sender_nickname(),
-                    meta.sender_group_nickname().map(str::to_string),
-                    sender_prks_id.map(str::to_string),
-                    meta.sent_at(),
-                ),
-                chat_message.content(),
-            )
-        };
+        let user_message = MessageOwned::User {
+            content: prompt_text(message, content, sender_prks_id),
+        }
+        .into();
 
-        self.agent.push_message(
-            MessageOwned::User {
-                content: chat_message.into_prompt_text(),
-            }
-            .into(),
-        );
-
-        // Compact before solving to keep context within sliding window.
-        // TODO: compact AFTER solving.
-        self.agent.compact();
-
-        self.agent.solve().await
+        self.agent.solve(user_message).await
     }
+}
+
+#[cfg(test)]
+impl BotAgent {
+    pub fn new_for_test() -> Self {
+        let resolver = OpenAiResolver::from_env();
+        let context = ContextBuilder::<_, BotMessageAnnotation>::new("test-model").build();
+        let agent =
+            AgentBuilder::new_with_state(BotAgentState::default(), context, resolver).build();
+
+        Self {
+            agent,
+            id_transform: HashMap::new(),
+        }
+    }
+}
+
+fn prompt_text(message: ChannelMessage, content: String, sender_prks_id: &str) -> String {
+    format!(
+        "[channel_id: {}, channel_name: {}, sender_id: {}, sender_nickname: {}, sender_channel_nickname: {}, sender_prks_id: {}, sent_at: {}]\n{}",
+        message.channel_id,
+        "-",
+        message.actor.id,
+        message.actor.nickname,
+        message.actor.channel_nickname.as_deref().unwrap_or("-"),
+        sender_prks_id,
+        message.sent_at,
+        content
+    )
 }

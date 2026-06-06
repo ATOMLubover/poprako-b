@@ -6,20 +6,17 @@ use onebot_v11::connect::ws_reverse::ReverseWsConfig;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BotServerConfig {
     pub reverse_ws: ReverseWebSockServerConfig,
-    pub self_qid: i64,
+    pub self_id: String,
 }
 
 impl BotServerConfig {
     pub fn from_env() -> anyhow::Result<Self> {
         let reverse_ws = ReverseWebSockServerConfig::from_env()?;
-        let self_qid = env::var("ACCOUNT")
-            .context("ACCOUNT not set in environment")?
-            .parse::<i64>()
-            .context("ACCOUNT must be a valid i64")?;
+        let self_id = env::var("ACCOUNT").context("ACCOUNT not set in environment")?;
 
         Ok(Self {
             reverse_ws,
-            self_qid,
+            self_id,
         })
     }
 }

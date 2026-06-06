@@ -1,42 +1,84 @@
+use std::marker::PhantomData;
+
+use async_trait::async_trait;
+
 use crate::ai::resolver::context::Context;
 use crate::ai::resolver::message::{IMessage, MessageRole};
 
-pub fn sliding_window_compact<M>(cx: &mut Context<M>)
-where
-    M: IMessage + 'static,
-{
-    // Use a MAX_MESSAGES larger than RESERVE_MESSAGES, in casae the agent
-    // splits every time a message is pushed when the number of messages is above the limit.
-    const MAX_MESSAGES: usize = 80;
-    const RESERVE_MESSAGES: usize = 50;
+#[async_trait]
+pub trait ICompact: Send {
+    type Message: IMessage + Send + Sync + 'static;
+    type State: Send + Sync + 'static;
+    type Annotation: Default + Send + Sync + 'static;
 
-    let len = if let len = cx.messages().len()
-        && len > MAX_MESSAGES
-    {
-        len
-    } else {
-        return;
-    };
+    async fn compact(
+        &mut self,
+        state: &mut Self::State,
+        cx: &mut Context<Self::Message, Self::Annotation>,
+    );
+}
 
-    let mut messages = cx.take_messages();
+pub type DynCompact<M, S = (), A = ()> = Box<dyn ICompact<Message = M, State = S, Annotation = A>>;
 
-    // Reserve only the latest RESERVE_MESSAGES messages, and drop the rest.
-    // NOTE: First message(system prompt) is always reserved,
-    // so the agent can keep the system prompt in the context.
-    messages.drain(1..len.saturating_sub(RESERVE_MESSAGES));
+pub struct SlidingWindowCompact<M, S = (), A = ()> {
+    max_messages: usize,
+    reserve_messages: usize,
+    #[allow(clippy::type_complexity)]
+    marker: PhantomData<fn() -> (M, S, A)>,
+}
 
-    // In case the leading message in left part is not user message.
-    let user_first = messages
-        .iter()
-        .skip(1)
-        .position(|m| m.role() == MessageRole::User)
-        .map(|i| i + 1);
-
-    if let Some(i) = user_first
-        && i > 1
-    {
-        messages.drain(1..i);
+impl<M, S, A> SlidingWindowCompact<M, S, A> {
+    pub fn new(max_messages: usize, reserve_messages: usize) -> Self {
+        Self {
+            max_messages,
+            reserve_messages,
+            marker: PhantomData,
+        }
     }
+}
 
-    cx.set_messages(messages);
+impl<M, S, A> Default for SlidingWindowCompact<M, S, A> {
+    fn default() -> Self {
+        Self::new(80, 50)
+    }
+}
+
+#[async_trait]
+impl<M, S, A> ICompact for SlidingWindowCompact<M, S, A>
+where
+    M: IMessage + Send + Sync + 'static,
+    S: Send + Sync + 'static,
+    A: Default + Send + Sync + 'static,
+{
+    type Message = M;
+    type State = S;
+    type Annotation = A;
+
+    async fn compact(&mut self, _state: &mut S, cx: &mut Context<M, A>) {
+        let len = if let len = cx.message_count()
+            && len > self.max_messages
+        {
+            len
+        } else {
+            return;
+        };
+
+        let mut messages = cx.take_annotated_messages();
+
+        messages.drain(1..len.saturating_sub(self.reserve_messages));
+
+        let user_first = messages
+            .iter()
+            .skip(1)
+            .position(|m| m.message.role() == MessageRole::User)
+            .map(|i| i + 1);
+
+        if let Some(i) = user_first
+            && i > 1
+        {
+            messages.drain(1..i);
+        }
+
+        cx.set_annotated_messages(messages);
+    }
 }

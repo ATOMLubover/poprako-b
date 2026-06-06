@@ -2,7 +2,7 @@ use std::path::{Component, Path, PathBuf};
 
 use crate::ai::agent::tool::ITool;
 use crate::ai::agent::tool::result::{ExecutionError, ExecutionResult};
-use crate::ai::resolver::tool::{ParamDef, PropDef, ToolDef};
+use crate::ai::resolver::tool::{ParamDef, PropDef, ToolDefination};
 
 pub struct CreateFileTool {
     /// base_dir prevents the tool from creating files outside of this directory.
@@ -33,7 +33,7 @@ impl CreateFileTool {
 
 #[async_trait::async_trait]
 impl ITool for CreateFileTool {
-    fn defination(&self) -> ToolDef {
+    fn defination(&self) -> ToolDefination {
         let params = ParamDef::new("object")
             .with_properties(vec![
                 (
@@ -55,7 +55,7 @@ impl ITool for CreateFileTool {
             ])
             .with_required(vec!["path".to_string(), "content".to_string()]);
 
-        ToolDef::new(
+        ToolDefination::new(
             Self::TOOL_NAME,
             "Create a file with the specified content at the given relative path.",
             params,
@@ -111,7 +111,7 @@ impl ListFilesTool {
 
 #[async_trait::async_trait]
 impl ITool for ListFilesTool {
-    fn defination(&self) -> ToolDef {
+    fn defination(&self) -> ToolDefination {
         let params = ParamDef::new("object")
             .with_properties(vec![(
                 "path",
@@ -125,7 +125,7 @@ impl ITool for ListFilesTool {
             )])
             .with_required(vec!["path".to_string()]);
 
-        ToolDef::new(
+        ToolDefination::new(
             Self::TOOL_NAME,
             "List files and directories at the given relative path. \
              The path is always scoped to the base directory — path traversal (..) is blocked. \
@@ -205,7 +205,7 @@ fn check_path_traversal(path: &str) -> Result<PathBuf, ExecutionError> {
 
 #[async_trait::async_trait]
 impl ITool for ReadFileTool {
-    fn defination(&self) -> ToolDef {
+    fn defination(&self) -> ToolDefination {
         let params = ParamDef::new("object")
             .with_properties(vec![(
                 "path",
@@ -217,7 +217,7 @@ impl ITool for ReadFileTool {
             )])
             .with_required(vec!["path".to_string()]);
 
-        ToolDef::new(
+        ToolDefination::new(
             Self::TOOL_NAME,
             "Read the contents of a file at the given relative path.",
             params,

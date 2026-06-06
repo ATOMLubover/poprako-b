@@ -1,4 +1,3 @@
-mod group_history;
 mod poprako_s;
 
 use std::env;
@@ -8,7 +7,7 @@ use url::Url;
 
 use crate::ai::agent::tool::DynTool;
 use crate::ai::agent::tool::local::memory::{
-    GenerateMemoryShardTool, ListMemoryShardsTool, ModifyMemoryShardTool, RecallMemoryShardTool,
+    GenerateMemoryShardTool, ModifyMemoryShardTool, RecallMemoryShardTool,
 };
 use crate::ai::agent::tool::local::subagent::RunSubagentsTool;
 use crate::ai::agent::tool::local::web::WebSearchTool;
@@ -24,7 +23,7 @@ pub async fn build_tools() -> Vec<DynTool> {
     let memory_dir = memory_dir();
 
     let mut tools: Vec<DynTool> = vec![
-        Box::new(ListMemoryShardsTool::new(memory_dir.clone())),
+        // ListMemoryShardsTool replaced by MemoryShardInterceptor plugin
         Box::new(RecallMemoryShardTool::new(memory_dir.clone())),
         Box::new(GenerateMemoryShardTool::new(memory_dir.clone())),
         Box::new(ModifyMemoryShardTool::new(memory_dir.clone())),

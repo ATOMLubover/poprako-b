@@ -1,0 +1,390 @@
+use std::collections::HashSet;
+
+use async_trait::async_trait;
+
+use crate::ai::agent::AgentBuilder;
+use crate::ai::agent::IAgentPlugin;
+use crate::ai::agent::compact::ICompact;
+use crate::ai::agent::compact::SlidingWindowCompact;
+use crate::ai::agent::interceptor::IInterceptor;
+use crate::ai::agent::interceptor::InterceptorFlow;
+use crate::ai::resolver::IResolver;
+use crate::ai::resolver::context::AnnotatedMessage;
+use crate::ai::resolver::context::Context;
+use crate::ai::resolver::message::IMessage;
+use crate::ai::resolver::message::MessageOwned;
+use crate::ai::resolver::message::MessageRef;
+
+#[derive(Debug, Default)]
+pub struct InspirationState {
+    active_inspiration_ids: HashSet<String>,
+}
+
+pub trait IWithInspirationState {
+    fn inspiration_state_mut(&mut self) -> &mut InspirationState;
+}
+
+impl IWithInspirationState for InspirationState {
+    fn inspiration_state_mut(&mut self) -> &mut InspirationState {
+        self
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct InspirationAnnotation {
+    inspiration_id: Option<String>,
+}
+
+pub trait IWithInspirationAnnotation {
+    fn inspiration_annotation(&self) -> &InspirationAnnotation;
+
+    fn inspiration_annotation_mut(&mut self) -> &mut InspirationAnnotation;
+}
+
+impl IWithInspirationAnnotation for InspirationAnnotation {
+    fn inspiration_annotation(&self) -> &InspirationAnnotation {
+        self
+    }
+
+    fn inspiration_annotation_mut(&mut self) -> &mut InspirationAnnotation {
+        self
+    }
+}
+
+impl InspirationAnnotation {
+    fn inspiration(id: impl Into<String>) -> Self {
+        Self {
+            inspiration_id: Some(id.into()),
+        }
+    }
+
+    fn inspiration_id(&self) -> Option<&str> {
+        self.inspiration_id.as_deref()
+    }
+}
+
+pub fn plugin_inspiration() -> InspirationPlugin {
+    InspirationPlugin
+}
+
+pub struct InspirationPlugin;
+
+impl<M, R, S, A> IAgentPlugin<M, R, S, A> for InspirationPlugin
+where
+    M: IMessage + Send + Sync + 'static,
+    R: IResolver<Message = M> + Send,
+    S: IWithInspirationState + Send + Sync + 'static,
+    A: IWithInspirationAnnotation + Default + Send + Sync + 'static,
+{
+    fn apply(&self, builder: AgentBuilder<M, R, S, A>) -> AgentBuilder<M, R, S, A> {
+        builder
+            .compact(InspirationCompact::<M, S, A>::default())
+            .interceptor(InspirationInterceptor::<M, S, A>::default())
+    }
+}
+
+struct InspirationInterceptor<M, S, A> {
+    knowledge: InspirationKnowledge,
+    marker: std::marker::PhantomData<fn() -> (M, S, A)>,
+}
+
+impl<M, S, A> Default for InspirationInterceptor<M, S, A> {
+    fn default() -> Self {
+        Self {
+            knowledge: InspirationKnowledge,
+            marker: std::marker::PhantomData,
+        }
+    }
+}
+
+#[async_trait]
+impl<M, S, A> IInterceptor<S, M, A> for InspirationInterceptor<M, S, A>
+where
+    M: IMessage + Send + Sync + 'static,
+    S: IWithInspirationState + Send + Sync + 'static,
+    A: IWithInspirationAnnotation + Default + Send + Sync + 'static,
+{
+    async fn before_solve(&mut self, state: &mut S, cx: &mut Context<M, A>) -> InterceptorFlow {
+        let Some(user_text) = latest_user_text(cx) else {
+            return InterceptorFlow::Continue;
+        };
+
+        let input = MatchInput::parse(user_text);
+        let inspiration_state = state.inspiration_state_mut();
+        let injections = self.knowledge.match_entries(&input, inspiration_state);
+        if injections.is_empty() {
+            return InterceptorFlow::Continue;
+        }
+
+        inject_before_latest_message(cx, injections, inspiration_state);
+        InterceptorFlow::Continue
+    }
+}
+
+struct InspirationCompact<M, S, A> {
+    inner: SlidingWindowCompact<M, S, A>,
+}
+
+impl<M, S, A> Default for InspirationCompact<M, S, A> {
+    fn default() -> Self {
+        Self {
+            inner: SlidingWindowCompact::default(),
+        }
+    }
+}
+
+#[async_trait]
+impl<M, S, A> ICompact for InspirationCompact<M, S, A>
+where
+    M: IMessage + Send + Sync + 'static,
+    S: IWithInspirationState + Send + Sync + 'static,
+    A: IWithInspirationAnnotation + Default + Send + Sync + 'static,
+{
+    type Message = M;
+    type State = S;
+    type Annotation = A;
+
+    async fn compact(&mut self, state: &mut S, cx: &mut Context<Self::Message, Self::Annotation>) {
+        self.inner.compact(state, cx).await;
+        state.inspiration_state_mut().active_inspiration_ids = retained_inspiration_ids(cx);
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct KnowledgeEntry {
+    id: &'static str,
+    keywords: &'static [&'static str],
+    content: &'static str,
+}
+
+#[derive(Default)]
+struct InspirationKnowledge;
+
+impl InspirationKnowledge {
+    fn match_entries(
+        &self,
+        input: &MatchInput<'_>,
+        state: &InspirationState,
+    ) -> Vec<KnowledgeEntry> {
+        knowledge_entries()
+            .iter()
+            .copied()
+            .filter(|entry| !state.active_inspiration_ids.contains(entry.id))
+            .filter(|entry| entry.matches(input))
+            .collect()
+    }
+}
+
+impl KnowledgeEntry {
+    fn matches(&self, input: &MatchInput<'_>) -> bool {
+        self.keywords.iter().any(|keyword| input.contains(keyword))
+    }
+}
+
+struct MatchInput<'a> {
+    sender_nickname: Option<&'a str>,
+    sender_channel_nickname: Option<&'a str>,
+    body: &'a str,
+}
+
+impl<'a> MatchInput<'a> {
+    fn parse(prompt_text: &'a str) -> Self {
+        let (meta, body) = prompt_text
+            .split_once('\n')
+            .unwrap_or((prompt_text, prompt_text));
+
+        Self {
+            sender_nickname: metadata_value(meta, "sender_nickname"),
+            sender_channel_nickname: metadata_value(meta, "sender_channel_nickname"),
+            body,
+        }
+    }
+
+    fn contains(&self, keyword: &str) -> bool {
+        self.body.contains(keyword)
+            || self.sender_nickname == Some(keyword)
+            || self.sender_channel_nickname == Some(keyword)
+    }
+}
+
+fn latest_user_text<M, A>(cx: &Context<M, A>) -> Option<&str>
+where
+    M: IMessage + Send + Sync + 'static,
+{
+    let message = cx.annotated_messages().last()?.message.message_ref();
+    match message {
+        MessageRef::User { content } => Some(content),
+        _ => None,
+    }
+}
+
+fn inject_before_latest_message<M, A>(
+    cx: &mut Context<M, A>,
+    injections: Vec<KnowledgeEntry>,
+    state: &mut InspirationState,
+) where
+    M: IMessage + Send + Sync + 'static,
+    A: IWithInspirationAnnotation + Default,
+{
+    let mut messages = cx.take_annotated_messages();
+    let Some(latest) = messages.pop() else {
+        cx.set_annotated_messages(messages);
+        return;
+    };
+
+    for entry in injections {
+        let content = format!("[灵光一闪]\n{}", entry.content);
+        let message = M::from(MessageOwned::User { content });
+        let mut annotation = A::default();
+        *annotation.inspiration_annotation_mut() = InspirationAnnotation::inspiration(entry.id);
+        messages.push(AnnotatedMessage::new(message, annotation));
+        state.active_inspiration_ids.insert(entry.id.to_string());
+    }
+
+    messages.push(latest);
+    cx.set_annotated_messages(messages);
+}
+
+fn retained_inspiration_ids<M, A>(cx: &Context<M, A>) -> HashSet<String>
+where
+    M: IMessage + Send + Sync + 'static,
+    A: IWithInspirationAnnotation,
+{
+    cx.annotated_messages()
+        .iter()
+        .filter_map(|message| {
+            message
+                .annotation
+                .inspiration_annotation()
+                .inspiration_id()
+                .map(str::to_string)
+        })
+        .collect()
+}
+
+fn metadata_value<'a>(meta: &'a str, key: &str) -> Option<&'a str> {
+    let prefix = format!("{}: ", key);
+    let start = meta.find(&prefix)? + prefix.len();
+    let rest = &meta[start..];
+    let end = rest.find(',').unwrap_or(rest.len());
+    let value = rest[..end].trim();
+
+    if value == "-" || value.is_empty() {
+        None
+    } else {
+        Some(value)
+    }
+}
+
+fn knowledge_entries() -> &'static [KnowledgeEntry] {
+    &[
+        KnowledgeEntry {
+            id: "member.lb",
+            keywords: &["LB"],
+            content: "LB：核心开发，负责 poprako 全系列工具的开发",
+        },
+        KnowledgeEntry {
+            id: "member.niuniu",
+            keywords: &["牛牛", "灰暗天穹"],
+            content: "牛牛 / 灰暗天穹：喜欢剧情、画工、萝莉；巨乳是减分项",
+        },
+        KnowledgeEntry {
+            id: "member.nabai",
+            keywords: &["那白"],
+            content: "那白：翻译，热爱学习译法，喜欢用告白台词开玩笑",
+        },
+    ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use openai_oxide::types::chat::ChatCompletionMessageParam;
+
+    use crate::ai::resolver::context::ContextBuilder;
+    use crate::ai::resolver::message::MessageRef;
+
+    fn user(content: &str) -> ChatCompletionMessageParam {
+        MessageRef::User { content }.into()
+    }
+
+    fn annotated_user(
+        content: &str,
+        annotation: InspirationAnnotation,
+    ) -> AnnotatedMessage<ChatCompletionMessageParam, InspirationAnnotation> {
+        AnnotatedMessage::new(user(content), annotation)
+    }
+
+    #[tokio::test]
+    async fn before_solve_injects_matched_inspiration_before_latest_user_message() {
+        let mut interceptor = InspirationInterceptor::<ChatCompletionMessageParam, _, _>::default();
+        let mut state = InspirationState::default();
+        let mut cx = ContextBuilder::<_, InspirationAnnotation>::new("test-model")
+            .messages(vec![user(
+                "[channel_id: 1, channel_name: -, sender_id: 2, sender_nickname: LB, sender_channel_nickname: -, sender_prks_id: -, sent_at: now]\n帮我看看",
+            )])
+            .build();
+
+        interceptor.before_solve(&mut state, &mut cx).await;
+
+        assert_eq!(cx.message_count(), 2);
+        assert!(state.active_inspiration_ids.contains("member.lb"));
+        match cx.annotated_messages()[1].message.message_ref() {
+            MessageRef::User { content } => assert_eq!(
+                content,
+                "[channel_id: 1, channel_name: -, sender_id: 2, sender_nickname: LB, sender_channel_nickname: -, sender_prks_id: -, sent_at: now]\n帮我看看"
+            ),
+            _ => panic!("latest message should remain a user message"),
+        }
+        assert_eq!(
+            cx.annotated_messages()[0]
+                .annotation
+                .inspiration_id()
+                .as_deref(),
+            Some("member.lb")
+        );
+    }
+
+    #[tokio::test]
+    async fn before_solve_does_not_duplicate_active_inspiration() {
+        let mut interceptor = InspirationInterceptor::<ChatCompletionMessageParam, _, _>::default();
+        let mut state = InspirationState::default();
+        state
+            .active_inspiration_ids
+            .insert("member.nabai".to_string());
+        let mut cx = ContextBuilder::<_, InspirationAnnotation>::new("test-model")
+            .messages(vec![user(
+                "[channel_id: 1, channel_name: -, sender_id: 2, sender_nickname: 小明, sender_channel_nickname: -, sender_prks_id: -, sent_at: now]\n那白在吗",
+            )])
+            .build();
+
+        interceptor.before_solve(&mut state, &mut cx).await;
+
+        assert_eq!(cx.message_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn compact_rebuilds_state_from_retained_annotations() {
+        let mut state = InspirationState::default();
+        state.active_inspiration_ids.insert("member.lb".to_string());
+        state
+            .active_inspiration_ids
+            .insert("member.nabai".to_string());
+        let mut cx = ContextBuilder::<_, InspirationAnnotation>::new("test-model")
+            .annotated_messages(vec![
+                annotated_user(
+                    "[灵光一闪]\n那白：翻译",
+                    InspirationAnnotation::inspiration("member.nabai"),
+                ),
+                annotated_user("那白在吗", InspirationAnnotation::default()),
+            ])
+            .build();
+        let mut compact = InspirationCompact::<ChatCompletionMessageParam, _, _>::default();
+
+        compact.compact(&mut state, &mut cx).await;
+
+        assert_eq!(state.active_inspiration_ids.len(), 1);
+        assert!(state.active_inspiration_ids.contains("member.nabai"));
+    }
+}

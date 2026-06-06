@@ -7,6 +7,7 @@ use crate::ai::resolver::IResolver;
 use crate::ai::resolver::action::{Action, Reason};
 use crate::ai::resolver::context::Context;
 use crate::ai::resolver::result::{ResolveError, ResolveResult};
+use crate::ai::resolver::tool::ToolDefination;
 use openai_oxide::types::chat::{
     ChatCompletionMessageParam, ChatCompletionRequest, FunctionCall, Tool as OxTool,
     ToolCall as OxToolCall, ToolChoice,
@@ -34,7 +35,7 @@ impl OpenAiResolver {
         }
     }
 
-    fn map_tool(tool: &crate::ai::resolver::tool::ToolDef) -> OxTool {
+    fn map_tool(tool: &ToolDefination) -> OxTool {
         OxTool::function(&tool.name, &tool.description, tool.parameters.to_value())
     }
 
@@ -100,9 +101,15 @@ impl IResolver for OpenAiResolver {
     type Message = ChatCompletionMessageParam;
 
     #[instrument(skip(self, cx), fields(model = %cx.model()), level = Level::INFO)]
-    async fn resolve(&mut self, cx: &Context<Self::Message>) -> ResolveResult<Action<OxToolCall>> {
-        let mut request =
-            ChatCompletionRequest::new(cx.model().to_string(), cx.messages().to_vec());
+    async fn resolve<A>(
+        &mut self,
+        cx: &Context<Self::Message, A>,
+    ) -> ResolveResult<Action<OxToolCall>>
+    where
+        A: Send + Sync + 'static,
+    {
+        let messages: Vec<ChatCompletionMessageParam> = cx.messages().cloned().collect();
+        let mut request = ChatCompletionRequest::new(cx.model().to_string(), messages);
 
         let tools = cx.tool_defs();
         if !tools.is_empty() {
@@ -172,7 +179,7 @@ mod tests {
 
     use crate::ai::resolver::IResolver;
     use crate::ai::resolver::action::Reason;
-    use crate::ai::resolver::openai::context::Context;
+    use crate::ai::resolver_impl::openai::context::Context;
 
     fn user(content: &str) -> ChatCompletionMessageParam {
         ChatCompletionMessageParam::User {
@@ -263,7 +270,8 @@ mod tests {
 
         assert!(
             content.contains("12"),
-            "expected '12' in three-turn response, got: {content}"
+            "expected '12' in three-turn response, got: {}",
+            content
         );
     }
 }

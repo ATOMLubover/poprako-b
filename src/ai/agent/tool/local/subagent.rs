@@ -3,14 +3,14 @@ use std::path::PathBuf;
 
 use openai_oxide::types::chat::{ChatCompletionMessageParam, UserContent};
 
-use crate::ai::agent::openai::OpenAiAgentBuilder;
 use crate::ai::agent::tool::DynTool;
 use crate::ai::agent::tool::ITool;
 use crate::ai::agent::tool::local::fs::{ListFilesTool, ReadFileTool};
 use crate::ai::agent::tool::result::{ExecutionError, ExecutionResult};
+use crate::ai::agent_impl::openai::OpenAiAgentBuilder;
 use crate::ai::resolver::context::ContextBuilder;
-use crate::ai::resolver::openai::OpenAiResolver;
-use crate::ai::resolver::tool::{ParamDef, PropDef, ToolDef};
+use crate::ai::resolver::tool::{ParamDef, PropDef, ToolDefination};
+use crate::ai::resolver_impl::openai::OpenAiResolver;
 
 pub struct RunSubagentsTool {
     default_model: String,
@@ -193,21 +193,20 @@ async fn run_sub_agent(
             let resolver = OpenAiResolver::from_env();
 
             let cx = ContextBuilder::new(model)
-                .messages(vec![
-                    ChatCompletionMessageParam::System {
-                        content: system_prompt.to_string(),
-                        name: None,
-                    },
-                    ChatCompletionMessageParam::User {
-                        content: UserContent::Text(user_prompt.to_string()),
-                        name: None,
-                    },
-                ])
+                .messages(vec![ChatCompletionMessageParam::System {
+                    content: system_prompt.to_string(),
+                    name: None,
+                }])
                 .build();
 
             let mut agent = OpenAiAgentBuilder::new(cx, resolver).tools(tools).build();
 
-            agent.solve().await
+            agent
+                .solve(ChatCompletionMessageParam::User {
+                    content: UserContent::Text(user_prompt.to_string()),
+                    name: None,
+                })
+                .await
         }
         other => {
             tracing::warn!(model = other, "unsupported model for sub-agent");
@@ -218,7 +217,7 @@ async fn run_sub_agent(
 
 #[async_trait::async_trait]
 impl ITool for RunSubagentsTool {
-    fn defination(&self) -> ToolDef {
+    fn defination(&self) -> ToolDefination {
         let params = ParamDef::new("object")
             .with_properties(vec![
                 (
@@ -247,7 +246,7 @@ impl ITool for RunSubagentsTool {
             ])
             .with_required(vec!["system_prompt".to_string(), "tasks".to_string()]);
 
-        ToolDef::new(
+        ToolDefination::new(
             "run_subagents",
             "Delegate multiple independent tasks to sub-agents that run in parallel. \
              Each sub-agent resolves independently and results are collected. \

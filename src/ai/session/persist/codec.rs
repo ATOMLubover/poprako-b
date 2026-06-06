@@ -3,12 +3,13 @@ use openai_oxide::types::chat::FunctionCall;
 use openai_oxide::types::chat::ToolCall as OpenAiToolCall;
 use openai_oxide::types::chat::UserContent;
 
-use crate::ai::agent::persist::data_object::ContextSnapshot;
-use crate::ai::agent::persist::data_object::Message;
 use crate::ai::resolver::context::Context;
 use crate::ai::resolver::context::ContextBuilder;
 use crate::ai::resolver::message::IMessage;
 use crate::ai::resolver::message::MessageRef;
+use crate::ai::session::persist::data_object::ContextSnapshot;
+use crate::ai::session::persist::data_object::Message;
+use crate::ai::session::persist::data_object::ToolCall;
 
 pub trait IMessageSnapshotCodec<M>
 where
@@ -23,10 +24,12 @@ pub trait IContextSnapshotCodec<M>: IMessageSnapshotCodec<M>
 where
     M: IMessage + 'static,
 {
-    fn encode_context(&self, context: &Context<M>) -> anyhow::Result<ContextSnapshot> {
+    fn encode_context<A>(&self, context: &Context<M, A>) -> anyhow::Result<ContextSnapshot>
+    where
+        A: 'static,
+    {
         let messages = context
             .messages()
-            .iter()
             .map(|message| self.encode_message(message))
             .collect::<anyhow::Result<Vec<_>>>()?;
 
@@ -77,7 +80,7 @@ impl IMessageSnapshotCodec<ChatCompletionMessageParam> for OpenAiCodec {
                 tool_calls: tool_calls.as_ref().map(|calls| {
                     calls
                         .iter()
-                        .map(|call| crate::ai::agent::persist::data_object::ToolCall {
+                        .map(|call| ToolCall {
                             id: call.id.clone(),
                             name: call.function.name.clone(),
                             args: call.function.arguments.clone(),
@@ -196,7 +199,7 @@ mod tests {
     #[test]
     fn openai_context_snapshot_excludes_tool_defs() {
         let codec = OpenAiCodec;
-        let context = ContextBuilder::new("deepseek-v4-flash")
+        let context: Context<ChatCompletionMessageParam> = ContextBuilder::new("deepseek-v4-flash")
             .messages(vec![
                 ChatCompletionMessageParam::System {
                     content: "system".to_string(),

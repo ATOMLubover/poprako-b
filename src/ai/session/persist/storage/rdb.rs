@@ -12,17 +12,17 @@ use entity::SessionEntity;
 use entity::SessionStatus;
 use entity::upsert_row;
 
-use crate::ai::agent::persist::data_object::Checkpoint;
-use crate::ai::agent::persist::data_object::CheckpointContext;
-use crate::ai::agent::persist::data_object::CheckpointKind;
-use crate::ai::agent::persist::data_object::CheckpointMessageRef;
-use crate::ai::agent::persist::data_object::ContextSnapshot;
-use crate::ai::agent::persist::data_object::Message;
-use crate::ai::agent::persist::data_object::NewCheckpoint;
-use crate::ai::agent::persist::data_object::NewSession;
-use crate::ai::agent::persist::data_object::PersistDiagnostics;
-use crate::ai::agent::persist::data_object::Session;
-use crate::ai::agent::persist::storage::IStorage;
+use crate::ai::session::persist::data_object::Checkpoint;
+use crate::ai::session::persist::data_object::CheckpointContext;
+use crate::ai::session::persist::data_object::CheckpointKind;
+use crate::ai::session::persist::data_object::CheckpointMessageRef;
+use crate::ai::session::persist::data_object::ContextSnapshot;
+use crate::ai::session::persist::data_object::Message;
+use crate::ai::session::persist::data_object::NewCheckpoint;
+use crate::ai::session::persist::data_object::NewSession;
+use crate::ai::session::persist::data_object::PersistDiagnostics;
+use crate::ai::session::persist::data_object::Session;
+use crate::ai::session::persist::storage::IStorage;
 
 #[derive(Clone)]
 pub struct RdbStorage {
@@ -61,7 +61,7 @@ fn prefix_match(base: &[Message], current: &[Message]) -> bool {
 
 /// Upsert a message into `agent_messages` and return its id.
 async fn upsert_message(
-    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     message: &Message,
 ) -> anyhow::Result<Uuid> {
     let (id, hash) = upsert_row(message);
@@ -83,7 +83,7 @@ async fn upsert_message(
         &payload,
         now,
     )
-    .execute(&mut **tx)
+    .execute(&mut **transaction)
     .await?;
 
     Ok(id)
@@ -91,7 +91,7 @@ async fn upsert_message(
 
 /// Insert refs into `agent_checkpoint_messages`.
 async fn insert_message_refs(
-    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     checkpoint_id: Uuid,
     refs: &[(i32, Uuid)],
 ) -> anyhow::Result<()> {
@@ -105,7 +105,7 @@ async fn insert_message_refs(
             *position,
             *message_id,
         )
-        .execute(&mut **tx)
+        .execute(&mut **transaction)
         .await?;
     }
     Ok(())
@@ -114,19 +114,14 @@ async fn insert_message_refs(
 /// Load the ordered message sequence for a checkpoint by following the
 /// base chain.  Returns the concatenated `Vec<Message>`.
 async fn load_message_sequence(
-    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     checkpoint_id: Uuid,
 ) -> anyhow::Result<Vec<Message>> {
     let mut chain: Vec<(Uuid, Option<Uuid>)> = Vec::new();
     let mut current = Some(checkpoint_id);
 
     // Walk up the base chain.
-    loop {
-        let cid = match current {
-            Some(id) => id,
-            None => break,
-        };
-
+    while let Some(cid) = current {
         let row = sqlx::query!(
             r#"
             SELECT id, base_checkpoint_id
@@ -135,7 +130,7 @@ async fn load_message_sequence(
             "#,
             cid,
         )
-        .fetch_optional(&mut **tx)
+        .fetch_optional(&mut **transaction)
         .await?;
 
         let row = match row {
@@ -168,14 +163,12 @@ async fn load_message_sequence(
             "#,
             cid,
         )
-        .fetch_all(&mut **tx)
+        .fetch_all(&mut **transaction)
         .await?;
 
         // Position-based: we build a vec of (pos, payload) then sort and collect.
-        let mut local: Vec<(i32, serde_json::Value)> = rows
-            .into_iter()
-            .map(|r| (r.position, r.payload))
-            .collect();
+        let mut local: Vec<(i32, serde_json::Value)> =
+            rows.into_iter().map(|r| (r.position, r.payload)).collect();
         local.sort_by_key(|(pos, _)| *pos);
 
         for (_, payload) in local {
@@ -190,7 +183,7 @@ async fn load_message_sequence(
 
 /// Load the full reconstructed checkpoint (entity + snapshot).
 async fn reconstruct_checkpoint(
-    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
     checkpoint_id: Uuid,
 ) -> anyhow::Result<ReconstructedCheckpoint> {
     let row = sqlx::query!(
@@ -208,7 +201,7 @@ async fn reconstruct_checkpoint(
         "#,
         checkpoint_id,
     )
-    .fetch_one(&mut **tx)
+    .fetch_one(&mut **transaction)
     .await?;
 
     let mut entity = CheckpointEntity::from_db(
@@ -231,7 +224,7 @@ async fn reconstruct_checkpoint(
         "#,
         checkpoint_id,
     )
-    .fetch_all(&mut **tx)
+    .fetch_all(&mut **transaction)
     .await?;
 
     entity.message_refs = ref_rows
@@ -242,7 +235,7 @@ async fn reconstruct_checkpoint(
         })
         .collect();
 
-    let messages = load_message_sequence(tx, checkpoint_id).await?;
+    let messages = load_message_sequence(transaction, checkpoint_id).await?;
     let snapshot = ContextSnapshot {
         model: entity.model.clone(),
         messages,
@@ -407,7 +400,7 @@ impl IStorage for RdbStorage {
     }
 
     async fn create_checkpoint(&self, input: NewCheckpoint) -> anyhow::Result<Checkpoint> {
-        let mut tx = self.pool.begin().await?;
+        let mut transaction = self.pool.begin().await?;
 
         // Lock the session to prevent concurrent checkpoint creation.
         let _session = sqlx::query!(
@@ -418,7 +411,7 @@ impl IStorage for RdbStorage {
             "#,
             input.session_id,
         )
-        .fetch_one(&mut *tx)
+        .fetch_one(&mut *transaction)
         .await
         .map_err(|_| anyhow::anyhow!("session {} not found", input.session_id))?;
 
@@ -434,7 +427,7 @@ impl IStorage for RdbStorage {
                 "#,
                 input.session_id,
             )
-            .fetch_optional(&mut *tx)
+            .fetch_optional(&mut *transaction)
             .await?;
 
             row.map(|r| r.id)
@@ -442,7 +435,7 @@ impl IStorage for RdbStorage {
 
         // Build the base message sequence.
         let base_messages: Vec<Message> = if let Some(bid) = base_id {
-            load_message_sequence(&mut tx, bid).await?
+            load_message_sequence(&mut transaction, bid).await?
         } else {
             Vec::new()
         };
@@ -454,7 +447,7 @@ impl IStorage for RdbStorage {
                 let suffix = &input.messages[base_messages.len()..];
                 let mut refs = Vec::with_capacity(suffix.len());
                 for (i, message) in suffix.iter().enumerate() {
-                    let msg_id = upsert_message(&mut tx, message).await?;
+                    let msg_id = upsert_message(&mut transaction, message).await?;
                     refs.push((base_messages.len() as i32 + i as i32, msg_id));
                 }
                 (base_id, refs)
@@ -462,7 +455,7 @@ impl IStorage for RdbStorage {
                 // Reset: store all messages as locals on a root checkpoint.
                 let mut refs = Vec::with_capacity(input.messages.len());
                 for (i, message) in input.messages.iter().enumerate() {
-                    let msg_id = upsert_message(&mut tx, message).await?;
+                    let msg_id = upsert_message(&mut transaction, message).await?;
                     refs.push((i as i32, msg_id));
                 }
                 (None, refs)
@@ -496,13 +489,13 @@ impl IStorage for RdbStorage {
             checkpoint_entity.base_checkpoint_id,
             checkpoint_entity.created_at,
         )
-        .execute(&mut *tx)
+        .execute(&mut *transaction)
         .await?;
 
         // Insert message refs.
-        insert_message_refs(&mut tx, checkpoint_entity.id, &refs_to_store).await?;
+        insert_message_refs(&mut transaction, checkpoint_entity.id, &refs_to_store).await?;
 
-        tx.commit().await?;
+        transaction.commit().await?;
 
         Ok(checkpoint_entity.into_data_object())
     }
@@ -578,9 +571,9 @@ impl IStorage for RdbStorage {
         &self,
         checkpoint_id: Uuid,
     ) -> anyhow::Result<CheckpointContext> {
-        let mut tx = self.pool.begin().await?;
-        let reconstructed = reconstruct_checkpoint(&mut tx, checkpoint_id).await?;
-        tx.commit().await?;
+        let mut transaction = self.pool.begin().await?;
+        let reconstructed = reconstruct_checkpoint(&mut transaction, checkpoint_id).await?;
+        transaction.commit().await?;
 
         Ok(CheckpointContext {
             checkpoint: reconstructed.entity.into_data_object(),
@@ -629,7 +622,7 @@ impl IStorage for RdbStorage {
         parent_checkpoint_id: Uuid,
         name: Option<String>,
     ) -> anyhow::Result<(Session, Checkpoint)> {
-        let mut tx = self.pool.begin().await?;
+        let mut transaction = self.pool.begin().await?;
 
         // Read parent checkpoint to get the model.
         let parent_row = sqlx::query!(
@@ -640,7 +633,7 @@ impl IStorage for RdbStorage {
             "#,
             parent_checkpoint_id,
         )
-        .fetch_one(&mut *tx)
+        .fetch_one(&mut *transaction)
         .await?;
 
         let parent_model = parent_row.model.clone();
@@ -681,7 +674,7 @@ impl IStorage for RdbStorage {
             session.created_at,
             session.updated_at,
         )
-        .fetch_one(&mut *tx)
+        .fetch_one(&mut *transaction)
         .await?;
         let session = SessionEntity::from_db(
             session_row.id,
@@ -728,10 +721,10 @@ impl IStorage for RdbStorage {
             checkpoint_entity.base_checkpoint_id,
             checkpoint_entity.created_at,
         )
-        .execute(&mut *tx)
+        .execute(&mut *transaction)
         .await?;
 
-        tx.commit().await?;
+        transaction.commit().await?;
 
         Ok((session, checkpoint_entity.into_data_object()))
     }
@@ -740,8 +733,8 @@ impl IStorage for RdbStorage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ai::agent::persist::data_object::Status;
-    use crate::ai::agent::persist::data_object::ToolCall;
+    use crate::ai::session::persist::data_object::Status;
+    use crate::ai::session::persist::data_object::ToolCall;
 
     fn test_snapshot(_model: &str) -> Vec<Message> {
         vec![
@@ -1002,10 +995,7 @@ mod tests {
             .unwrap();
 
         let (fork, fork_checkpoint) = storage
-            .fork_session_from_checkpoint(
-                parent_checkpoint.id,
-                Some(format!("{}fork", prefix)),
-            )
+            .fork_session_from_checkpoint(parent_checkpoint.id, Some(format!("{}fork", prefix)))
             .await
             .unwrap();
         let loaded_fork = storage.get_session(fork.id).await.unwrap();
@@ -1044,7 +1034,10 @@ mod tests {
         .fetch_one(storage.pool())
         .await
         .unwrap();
-        assert_eq!(fork_msg_count, 0, "fork should have zero local message refs");
+        assert_eq!(
+            fork_msg_count, 0,
+            "fork should have zero local message refs"
+        );
 
         // Parent session still has the original 4 unique messages.
         let parent_msg_count = sqlx::query_scalar!(
@@ -1180,14 +1173,8 @@ mod tests {
         assert_eq!(second.base_checkpoint_id, Some(first.id));
 
         // Load context — both should have the right messages.
-        let first_ctx = storage
-            .load_checkpoint_context(first.id)
-            .await
-            .unwrap();
-        let second_ctx = storage
-            .load_checkpoint_context(second.id)
-            .await
-            .unwrap();
+        let first_ctx = storage.load_checkpoint_context(first.id).await.unwrap();
+        let second_ctx = storage.load_checkpoint_context(second.id).await.unwrap();
         assert_eq!(first_ctx.snapshot.messages, first_msgs);
         assert_eq!(second_ctx.snapshot.messages, second_msgs);
 
@@ -1201,10 +1188,7 @@ mod tests {
         .unwrap();
         assert_eq!(ref_count, 2); // only the 2 new messages
         assert_eq!(
-            storage
-                .checkpoint_local_ref_count(second.id)
-                .await
-                .unwrap(),
+            storage.checkpoint_local_ref_count(second.id).await.unwrap(),
             2
         );
 
