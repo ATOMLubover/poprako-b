@@ -7,15 +7,15 @@ use crate::ai::resolver::context::Context;
 use crate::ai::resolver::message::IMessage;
 use crate::ai::resolver::message::MessageOwned;
 use crate::ai::resolver::message::MessageRef;
-use crate::bot::agent::plugin::inspiration::annotation::IWithInspirationAnnotation;
-use crate::bot::agent::plugin::inspiration::annotation::InspirationAnnotation;
+use crate::bot::agent::plugin::inspiration::annotation::IInspirationAnnotated;
+use crate::bot::agent::plugin::inspiration::annotation::InspiredAnnotation;
 use crate::bot::agent::plugin::inspiration::input::MatchInput;
-use crate::bot::agent::plugin::inspiration::knowledge::InspirationKnowledge;
 use crate::bot::agent::plugin::inspiration::knowledge::KnowledgeEntry;
-use crate::bot::agent::plugin::inspiration::state::IWithInspirationState;
-use crate::bot::agent::plugin::inspiration::state::InspirationState;
+use crate::bot::agent::plugin::inspiration::knowledge::KnowledgeRegistry;
+use crate::bot::agent::plugin::inspiration::state::IInspirationEmbedded;
+use crate::bot::agent::plugin::inspiration::state::InspiredState;
 
-fn latest_user_text<M, A>(cx: &Context<M, A>) -> Option<&str>
+fn last_user_text<M, A>(cx: &Context<M, A>) -> Option<&str>
 where
     M: IMessage + Send + Sync + 'static,
 {
@@ -28,30 +28,35 @@ where
 
 fn inject_inspiration<M, A>(
     cx: &mut Context<M, A>,
-    state: &mut InspirationState,
+    state: &mut InspiredState,
     entry: KnowledgeEntry,
 ) where
     M: IMessage + Send + Sync + 'static,
-    A: IWithInspirationAnnotation + Default,
+    A: IInspirationAnnotated + Default,
 {
-    let content = format!("[灵光一闪]\n{}", entry.content);
+    let content = format!(
+        "[注入上下文：灵感资料]\n来源：系统\n编号：{}\n说明：这不是真实用户发言。只把它当作当前对话的背景资料，不要直接回应本消息。\n\n{}\n[/注入上下文]",
+        entry.id, entry.content
+    );
     let message = M::from(MessageOwned::User { content });
+
     let mut annotation = A::default();
-    *annotation.inspiration_annotation_mut() = InspirationAnnotation::inspiration(entry.id);
+    *annotation.inspired_annotation_mut() = InspiredAnnotation::with_knowledge_id(entry.id.clone());
 
     cx.inject_before_last(AnnotatedMessage::new(message, annotation));
-    state.active_inspiration_ids.insert(entry.id.to_string());
+    state.active_knowledge_ids.insert(entry.id);
 }
 
 pub struct InspirationInterceptor<M, S, A> {
-    knowledge: InspirationKnowledge,
+    knowledge_registry: KnowledgeRegistry,
+    #[allow(clippy::complexity)]
     marker: std::marker::PhantomData<fn() -> (M, S, A)>,
 }
 
-impl<M, S, A> Default for InspirationInterceptor<M, S, A> {
-    fn default() -> Self {
+impl<M, S, A> InspirationInterceptor<M, S, A> {
+    pub fn new(knowledge_registry: KnowledgeRegistry) -> Self {
         Self {
-            knowledge: InspirationKnowledge,
+            knowledge_registry,
             marker: std::marker::PhantomData,
         }
     }
@@ -61,17 +66,20 @@ impl<M, S, A> Default for InspirationInterceptor<M, S, A> {
 impl<M, S, A> IInterceptor<S, M, A> for InspirationInterceptor<M, S, A>
 where
     M: IMessage + Send + Sync + 'static,
-    S: IWithInspirationState + Send + Sync + 'static,
-    A: IWithInspirationAnnotation + Default + Send + Sync + 'static,
+    S: IInspirationEmbedded + Send + Sync + 'static,
+    A: IInspirationAnnotated + Default + Send + Sync + 'static,
 {
     async fn before_solve(&mut self, state: &mut S, cx: &mut Context<M, A>) -> InterceptorFlow {
-        let Some(user_text) = latest_user_text(cx) else {
+        let Some(user_text) = last_user_text(cx) else {
             return InterceptorFlow::Continue;
         };
 
         let input = MatchInput::parse(user_text);
-        let inspiration_state = state.inspiration_state_mut();
-        let entries = self.knowledge.match_entries(&input, inspiration_state);
+
+        let inspiration_state = state.inspired_state_mut();
+        let entries = self
+            .knowledge_registry
+            .match_entries(&input, inspiration_state);
 
         for entry in entries {
             inject_inspiration(cx, inspiration_state, entry);

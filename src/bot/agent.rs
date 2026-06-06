@@ -47,6 +47,7 @@ impl BotAgent {
 
         let tools = build_tools().await;
         let remote_proxy = RemoteProxy::from_local_config().await.ok();
+        let inspiration_plugin = plugin_inspiration(memory_dir())?;
 
         let context = ContextBuilder::<_, BotMessageAnnotation>::new(MODEL_NAME)
             .messages(vec![
@@ -60,7 +61,7 @@ impl BotAgent {
         let agent = AgentBuilder::new_with_state(BotAgentState::default(), context, resolver)
             .tools(tools)
             .remote_proxy(remote_proxy)
-            .plugin(plugin_inspiration())
+            .plugin(inspiration_plugin)
             .plugin(plugin_memory_shard())
             .build();
 

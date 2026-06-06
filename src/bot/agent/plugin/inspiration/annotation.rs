@@ -1,32 +1,24 @@
 #[derive(Debug, Clone, Default)]
-pub struct InspirationAnnotation {
-    inspiration_id: Option<String>,
+pub struct InspiredAnnotation {
+    knowledge_id: Option<String>,
 }
 
-impl InspirationAnnotation {
-    pub fn inspiration(id: impl Into<String>) -> Self {
+impl InspiredAnnotation {
+    pub fn with_knowledge_id(id: impl Into<String>) -> Self {
         Self {
-            inspiration_id: Some(id.into()),
+            knowledge_id: Some(id.into()),
         }
     }
 
-    pub fn inspiration_id(&self) -> Option<&str> {
-        self.inspiration_id.as_deref()
+    pub fn knowledge_id(&self) -> Option<&str> {
+        self.knowledge_id.as_deref()
     }
 }
 
-pub trait IWithInspirationAnnotation {
-    fn inspiration_annotation(&self) -> &InspirationAnnotation;
+pub trait IInspirationAnnotated {
+    /// Returns the inspiration annotation, which may indicate whether this message is an inspiration injection and which knowledge entry it corresponds to.
+    fn inspired_annotation(&self) -> &InspiredAnnotation;
 
-    fn inspiration_annotation_mut(&mut self) -> &mut InspirationAnnotation;
-}
-
-impl IWithInspirationAnnotation for InspirationAnnotation {
-    fn inspiration_annotation(&self) -> &InspirationAnnotation {
-        self
-    }
-
-    fn inspiration_annotation_mut(&mut self) -> &mut InspirationAnnotation {
-        self
-    }
+    /// Returns a mutable reference to the inspiration annotation, allowing modification of the inspiration state.
+    fn inspired_annotation_mut(&mut self) -> &mut InspiredAnnotation;
 }

@@ -1,30 +1,30 @@
-use crate::bot::agent::plugin::inspiration::IWithInspirationAnnotation;
-use crate::bot::agent::plugin::inspiration::IWithInspirationState;
-use crate::bot::agent::plugin::inspiration::InspirationAnnotation;
-use crate::bot::agent::plugin::inspiration::InspirationState;
+use crate::bot::agent::plugin::inspiration::IInspirationAnnotated;
+use crate::bot::agent::plugin::inspiration::IInspirationEmbedded;
+use crate::bot::agent::plugin::inspiration::InspiredAnnotation;
+use crate::bot::agent::plugin::inspiration::InspiredState;
 
 #[derive(Default)]
 pub struct BotAgentState {
-    inspiration_state: InspirationState,
+    inspiration_state: InspiredState,
 }
 
-impl IWithInspirationState for BotAgentState {
-    fn inspiration_state_mut(&mut self) -> &mut InspirationState {
+impl IInspirationEmbedded for BotAgentState {
+    fn inspired_state_mut(&mut self) -> &mut InspiredState {
         &mut self.inspiration_state
     }
 }
 
 #[derive(Default)]
 pub struct BotMessageAnnotation {
-    inspiration_annotation: InspirationAnnotation,
+    inspiration_annotation: InspiredAnnotation,
 }
 
-impl IWithInspirationAnnotation for BotMessageAnnotation {
-    fn inspiration_annotation(&self) -> &InspirationAnnotation {
+impl IInspirationAnnotated for BotMessageAnnotation {
+    fn inspired_annotation(&self) -> &InspiredAnnotation {
         &self.inspiration_annotation
     }
 
-    fn inspiration_annotation_mut(&mut self) -> &mut InspirationAnnotation {
+    fn inspired_annotation_mut(&mut self) -> &mut InspiredAnnotation {
         &mut self.inspiration_annotation
     }
 }

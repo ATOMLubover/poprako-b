@@ -35,6 +35,7 @@ pub fn plugin_memory_shard() -> MemoryShardPlugin {
 
 struct MemoryShardInterceptor<M, S, A> {
     shards_dir: PathBuf,
+    #[allow(clippy::complexity)]
     marker: std::marker::PhantomData<fn() -> (M, S, A)>,
 }
 
@@ -81,7 +82,7 @@ impl<M, S, A> MemoryShardInterceptor<M, S, A> {
             };
 
             shards.push(format!(
-                "- **{}**: {} [tags: {}]",
+                "- 名称：{}\n  描述：{}\n  标签：{}",
                 meta.name,
                 meta.description,
                 meta.tags.join(", ")
@@ -104,27 +105,30 @@ where
     A: Default + Send + Sync + 'static,
 {
     async fn before_solve(&mut self, _state: &mut S, cx: &mut Context<M, A>) -> InterceptorFlow {
-        let Some(_user_text) = latest_user_text(cx) else {
+        if last_user_text(cx).is_none() {
+            // 还没有用户消息时不注入目录。
             return InterceptorFlow::Continue;
-        };
+        }
 
         let shards = self.collect_shards();
         if shards.is_empty() {
             return InterceptorFlow::Continue;
         }
 
-        let prefix = "[Available memory shards]\n\
-            You have access to the following memory shards. \
-            Use recall_memory_shard to read a shard's full content by name:\n\n";
-        let content = format!("{}{}", prefix, shards);
+        let prefix = "[注入上下文：记忆分片目录]\n\
+            来源：系统\n\
+            用途：可用记忆分片目录\n\
+            说明：这不是真实用户发言。不要直接回应本消息。需要完整内容时，按名称调用 recall_memory_shard。\n\n";
+        let content = format!("{}{}\n[/注入上下文]", prefix, shards);
 
         let injected = M::from(MessageOwned::User { content });
         cx.inject_before_last(AnnotatedMessage::new(injected, A::default()));
+
         InterceptorFlow::Continue
     }
 }
 
-fn latest_user_text<M, A>(cx: &Context<M, A>) -> Option<&str>
+fn last_user_text<M, A>(cx: &Context<M, A>) -> Option<&str>
 where
     M: IMessage + Send + Sync + 'static,
 {
@@ -162,22 +166,23 @@ mod tests {
 
         assert!(
             cx.message_count() >= 2,
-            "should inject at least one shard message before user message"
+            "应该在用户消息前注入至少一条记忆分片目录消息"
         );
 
-        // The injected message should be at second-to-last position, user message at last.
+        // 注入消息应该位于倒数第二条，真实用户消息仍然位于最后。
         let injected_idx = cx.message_count() - 2;
         match cx.annotated_messages()[injected_idx].message.message_ref() {
             MessageRef::User { content } => {
                 assert!(
-                    content.starts_with("[Available memory shards]"),
-                    "injected message should be the shard list, got: {content}"
+                    content.starts_with("[注入上下文：记忆分片目录]"),
+                    "注入消息应该是记忆分片目录，实际为：{}",
+                    content
                 );
             }
-            other => panic!("injected message should be User, got: {:?}", other),
+            other => panic!("注入消息应该是用户消息类型，实际为：{:?}", other),
         }
 
-        // The last message should still be the original user message.
+        // 最后一条消息应该仍然是原始用户消息。
         match cx
             .annotated_messages()
             .last()
@@ -186,12 +191,9 @@ mod tests {
             .message_ref()
         {
             MessageRef::User { content } => {
-                assert!(
-                    content.contains("hello"),
-                    "last message should be the original user message"
-                );
+                assert!(content.contains("hello"), "最后一条消息应该是原始用户消息");
             }
-            other => panic!("last message should be User, got: {:?}", other),
+            other => panic!("最后一条消息应该是用户消息类型，实际为：{:?}", other),
         }
     }
 
@@ -205,10 +207,6 @@ mod tests {
 
         interceptor.before_solve(&mut state, &mut cx).await;
 
-        assert_eq!(
-            cx.message_count(),
-            0,
-            "should not inject when context is empty"
-        );
+        assert_eq!(cx.message_count(), 0, "上下文为空时不应该注入消息");
     }
 }

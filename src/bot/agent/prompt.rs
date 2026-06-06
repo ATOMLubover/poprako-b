@@ -8,32 +8,32 @@ use tokio::sync::mpsc::{self, Receiver, Sender};
 use crate::bot::agent::memory_dir;
 
 /// Returns the list of prompt files that the watchdog monitors.
-/// Files are assembled in order: scenario → persona → rules → examples.
+/// Files are assembled in order: persona → directory → directory sections → examples.
 fn prompt_paths() -> Vec<PathBuf> {
     let dir = memory_dir().join("prompts");
     vec![
-        dir.join("scenario.txt"),
         dir.join("persona.txt"),
-        dir.join("rules.txt"),
+        dir.join("directory.txt"),
+        dir.join("scene.txt"),
+        dir.join("input-format.txt"),
+        dir.join("injected-context.txt"),
+        dir.join("knowledge-tools.txt"),
+        dir.join("response-style.txt"),
+        dir.join("safety.txt"),
         dir.join("examples.txt"),
     ]
 }
 
 /// Assembles the full system prompt from individual prompt files.
-/// Order: scenario (context) → persona (identity) → rules (constraints) → examples (demonstration).
+/// Order: persona (identity) → directory → directory sections → examples (demonstration).
 /// Examples are placed last so the model sees concrete patterns just before the conversation.
 pub fn system_prompt() -> anyhow::Result<String> {
-    let dir = memory_dir().join("prompts");
-
-    let scenario = std::fs::read_to_string(dir.join("scenario.txt"))?;
-    let persona = std::fs::read_to_string(dir.join("persona.txt"))?;
-    let rules = std::fs::read_to_string(dir.join("rules.txt"))?;
-    let examples = std::fs::read_to_string(dir.join("examples.txt"))?;
-
-    Ok(format!(
-        "{}\n\n{}\n\n{}\n\n{}",
-        scenario, persona, rules, examples
-    ))
+    prompt_paths()
+        .into_iter()
+        .map(std::fs::read_to_string)
+        .collect::<Result<Vec<_>, _>>()
+        .map(|parts| parts.join("\n\n"))
+        .map_err(Into::into)
 }
 
 async fn system_prompt_watchdog(send: Sender<String>) {
