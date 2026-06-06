@@ -12,16 +12,16 @@ use crate::ai::resolver::tool::{ParamDef, PropDef, ToolDefination};
 
 /// Parsed front-matter of a shard.md file.
 #[derive(Debug, Deserialize)]
-struct ShardMeta {
-    name: String,
-    description: String,
-    tags: Vec<String>,
+pub struct ShardMeta {
+    pub name: String,
+    pub description: String,
+    pub tags: Vec<String>,
 }
 
 /// Parse `---\n...\n---` YAML front-matter from markdown text.
 ///
 /// Returns `(ShardMeta, body_after_frontmatter)`.
-fn parse_frontmatter(raw: &str) -> Result<(ShardMeta, String), String> {
+pub fn parse_frontmatter(raw: &str) -> Result<(ShardMeta, String), String> {
     let mut sections = raw.splitn(3, "---");
     let _empty_before = sections.next(); // skip leading empty
     let yaml_block = sections

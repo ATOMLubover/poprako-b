@@ -9,6 +9,7 @@ use std::path::PathBuf;
 
 use openai_oxide::types::chat::ChatCompletionMessageParam;
 use plugin::inspiration::plugin_inspiration;
+use plugin::memory_shard::plugin_memory_shard;
 use state::BotAgentState;
 use state::BotMessageAnnotation;
 use tool::build_tools;
@@ -60,6 +61,7 @@ impl BotAgent {
             .tools(tools)
             .remote_proxy(remote_proxy)
             .plugin(plugin_inspiration())
+            .plugin(plugin_memory_shard())
             .build();
 
         Ok(Self {

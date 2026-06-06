@@ -8,7 +8,7 @@ use tokio::sync::mpsc;
 use tokio::time::sleep;
 
 /// Path to the base64-encoded image sent at midnight and on boot.
-const SPAM_IMAGE_PATH: &str = "assets/12oclock.txt";
+const SPAM_IMAGE_PATH: &str = "assets/12oclock";
 
 #[derive(Debug)]
 pub enum ScheduledSpamTrigger {
