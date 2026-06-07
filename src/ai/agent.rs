@@ -234,7 +234,7 @@ where
     async fn resolve_action(&mut self) -> SolveFlow<Action<M::ToolCall>> {
         match self.resolver.resolve(&self.context).await {
             Ok(action) => {
-                tracing::info!("resolver produced action: {:?}", action);
+                tracing::debug!("resolver produced action: {:?}", action);
                 SolveFlow::Continue(action)
             }
             Err(e) => {

@@ -14,7 +14,7 @@ use openai_oxide::types::chat::{
 };
 use openai_oxide::{ClientConfig, OpenAI, OpenAIError};
 use serde_json::Value;
-use tracing::{Level, debug, info, instrument};
+use tracing::{Level, debug, instrument};
 
 pub struct OpenAiResolver {
     client: OpenAI,
@@ -115,12 +115,12 @@ impl IResolver for OpenAiResolver {
         if !tools.is_empty() {
             let ox_tools: Vec<OxTool> = tools.iter().map(Self::map_tool).collect();
             let tool_names: Vec<&str> = ox_tools.iter().map(|t| t.function.name.as_str()).collect();
-            info!(?tool_names, tool_choice = "auto", "sending tools to LLM");
+            tracing::debug!(?tool_names, tool_choice = "auto", "sending tools to LLM");
             request = request
                 .tools(ox_tools)
                 .tool_choice(ToolChoice::Mode("auto".into()));
         } else {
-            info!("no tools registered, sending request without tools");
+            tracing::debug!("no tools registered, sending request without tools");
         }
 
         // Serialize to JSON and inject `reasoning_content: ""` on assistant messages
@@ -168,7 +168,8 @@ impl IResolver for OpenAiResolver {
         debug!(?choice, "first choice from LLM");
 
         let action = Self::build_action(choice);
-        info!(reason = ?action.reason, has_tool_calls = action.tool_calls.is_some(), "resolver produced action");
+        debug!(reason = ?action.reason, has_tool_calls = action.tool_calls.is_some(), "resolver produced action");
+
         Ok(action)
     }
 }

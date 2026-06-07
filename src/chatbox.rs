@@ -528,6 +528,8 @@ pub async fn run() -> anyhow::Result<()> {
 
     let listener = TcpListener::bind(addr).await?;
     tracing::info!("chatbox listening on http://{}", addr);
+
     axum::serve(listener, app).await?;
+
     Ok(())
 }

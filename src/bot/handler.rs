@@ -105,6 +105,7 @@ async fn bot_answer(state: &mut BotState, msg: ChannelMessage) -> Vec<BotCommand
 
     let reply_target = msg.reply_target();
     let channel_id = msg.channel_id.clone();
+
     let text = state
         .agent_mut()
         .try_answer(msg, user_text)
@@ -130,7 +131,7 @@ async fn bot_answer(state: &mut BotState, msg: ChannelMessage) -> Vec<BotCommand
 }
 
 pub async fn handle_channel_message(state: &mut BotState, msg: ChannelMessage) -> Vec<BotCommand> {
-    tracing::info!(
+    tracing::debug!(
         channel_id = msg.channel_id.as_str(),
         actor_id = msg.actor.id.as_str(),
         raw_message = msg.raw_text.as_str(),

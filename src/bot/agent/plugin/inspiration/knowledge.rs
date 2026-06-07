@@ -9,7 +9,7 @@ use crate::bot::agent::plugin::inspiration::input::MatchInput;
 use crate::bot::agent::plugin::inspiration::state::InspiredState;
 
 #[derive(Debug, Deserialize)]
-struct KnowledgeConfig {
+struct KnowledgeItem {
     id: String,
     pattern: String,
     content: String,
@@ -24,7 +24,11 @@ pub struct KnowledgeEntry {
 
 impl KnowledgeEntry {
     fn matches(&self, input: &MatchInput<'_>) -> bool {
-        input.contains(&self.pattern)
+        self.pattern
+            .split('|')
+            .map(str::trim)
+            .filter(|pattern| !pattern.is_empty())
+            .any(|pattern| input.contains(pattern))
     }
 }
 
@@ -95,48 +99,54 @@ fn path_id(root: &Path, path: &Path) -> anyhow::Result<String> {
     Ok(parts.join("."))
 }
 
-fn validate_non_empty(value: &str, field: &str, path: &Path) -> anyhow::Result<()> {
+fn validate_non_empty(value: &str, field: &str, path: &Path, index: usize) -> anyhow::Result<()> {
     if value.trim().is_empty() {
         anyhow::bail!(
-            "inspiration knowledge field '{}' is empty in {}",
+            "inspiration knowledge field '{}' is empty in {}[{}]",
             field,
-            path.display()
+            path.display(),
+            index
         );
     }
 
     Ok(())
 }
 
-fn load_entry(root: &Path, path: &Path) -> anyhow::Result<KnowledgeEntry> {
+fn load_file(root: &Path, path: &Path) -> anyhow::Result<Vec<KnowledgeEntry>> {
     let raw = std::fs::read_to_string(path).with_context(|| {
         format!(
             "failed to read inspiration knowledge file: {}",
             path.display()
         )
     })?;
-    let config: KnowledgeConfig = serde_json::from_str(&raw).with_context(|| {
+    let items: Vec<KnowledgeItem> = serde_json::from_str(&raw).with_context(|| {
         format!(
             "failed to parse inspiration knowledge JSON: {}",
             path.display()
         )
     })?;
-
-    validate_non_empty(&config.id, "id", path)?;
-    validate_non_empty(&config.pattern, "pattern", path)?;
-    validate_non_empty(&config.content, "content", path)?;
-
     let prefix = path_id(root, path)?;
-    let id = if prefix.is_empty() {
-        config.id
-    } else {
-        format!("{}.{}", prefix, config.id)
-    };
+    let mut entries = Vec::with_capacity(items.len());
 
-    Ok(KnowledgeEntry {
-        id,
-        pattern: config.pattern,
-        content: config.content,
-    })
+    for (index, item) in items.into_iter().enumerate() {
+        validate_non_empty(&item.id, "id", path, index)?;
+        validate_non_empty(&item.pattern, "pattern", path, index)?;
+        validate_non_empty(&item.content, "content", path, index)?;
+
+        let id = if prefix.is_empty() {
+            item.id
+        } else {
+            format!("{}.{}", prefix, item.id)
+        };
+
+        entries.push(KnowledgeEntry {
+            id,
+            pattern: item.pattern,
+            content: item.content,
+        });
+    }
+
+    Ok(entries)
 }
 
 #[derive(Debug, Clone, Default)]
@@ -146,7 +156,7 @@ pub struct KnowledgeRegistry {
 
 impl KnowledgeRegistry {
     pub fn load(memory_dir: PathBuf) -> anyhow::Result<Self> {
-        let root = memory_dir.join("inspiration").join("knowledge");
+        let root = memory_dir.join("inspirations").join("knowledges");
         if !root.exists() {
             return Ok(Self::default());
         }
@@ -155,16 +165,18 @@ impl KnowledgeRegistry {
         collect_json_files(&root, &mut files)?;
 
         let mut ids = HashSet::new();
-        let mut entries = Vec::with_capacity(files.len());
+        let mut entries = Vec::new();
 
         for file in files {
-            let entry = load_entry(&root, &file)?;
+            let loaded_entries = load_file(&root, &file)?;
 
-            if !ids.insert(entry.id.clone()) {
-                anyhow::bail!("duplicate inspiration knowledge id: {}", entry.id);
+            for entry in loaded_entries {
+                if !ids.insert(entry.id.clone()) {
+                    anyhow::bail!("duplicate inspiration knowledge id: {}", entry.id);
+                }
+
+                entries.push(entry);
             }
-
-            entries.push(entry);
         }
 
         Ok(Self { entries })
@@ -207,7 +219,10 @@ mod tests {
     }
 
     fn write_entry(memory_dir: &PathBuf, path: &str, raw: &str) {
-        let path = memory_dir.join("inspiration").join("knowledge").join(path);
+        let path = memory_dir
+            .join("inspirations")
+            .join("knowledges")
+            .join(path);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(path, raw).unwrap();
     }
@@ -218,7 +233,7 @@ mod tests {
         write_entry(
             &memory_dir,
             "a/b/c.json",
-            r#"{"id":"member-a","pattern":"member-name-a","content":"member-a 是一名翻译"}"#,
+            r#"[{"id":"member-a","pattern":"member-name-a","content":"member-a 是一名翻译"}]"#,
         );
 
         let registry = KnowledgeRegistry::load(memory_dir.clone()).unwrap();
@@ -238,12 +253,12 @@ mod tests {
         write_entry(
             &memory_dir,
             "member.json",
-            r#"{"id":"lb.same","pattern":"LB","content":"one"}"#,
+            r#"[{"id":"lb.same","pattern":"LB","content":"one"}]"#,
         );
         write_entry(
             &memory_dir,
             "member/lb.json",
-            r#"{"id":"same","pattern":"LB","content":"one"}"#,
+            r#"[{"id":"same","pattern":"LB","content":"one"}]"#,
         );
 
         let err = KnowledgeRegistry::load(memory_dir.clone()).unwrap_err();
@@ -258,12 +273,26 @@ mod tests {
         write_entry(
             &memory_dir,
             "member/lb.json",
-            r#"{"id":"lb","pattern":"","content":"LB"}"#,
+            r#"[{"id":"lb","pattern":"","content":"LB"}]"#,
         );
 
         let err = KnowledgeRegistry::load(memory_dir.clone()).unwrap_err();
         assert!(format!("{:?}", err).contains("field 'pattern' is empty"));
 
         std::fs::remove_dir_all(memory_dir).unwrap();
+    }
+
+    #[test]
+    fn match_entry_supports_pipe_separated_patterns() {
+        let registry = KnowledgeRegistry::from_entries(vec![super::KnowledgeEntry {
+            id: "role.huiantianqiong".to_string(),
+            pattern: "牛牛|灰暗天穹".to_string(),
+            content: "翻译、校对".to_string(),
+        }]);
+        let input = MatchInput::parse("灰暗天穹在吗");
+        let entries = registry.match_entries(&input, &InspiredState::default());
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].id, "role.huiantianqiong");
     }
 }

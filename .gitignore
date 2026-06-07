@@ -12,5 +12,5 @@ memory/
 memory/*
 !memory/prompts/
 !memory/prompts/*.txt
-!memory/inspiration/
-!memory/inspiration/**
+!memory/inspirations/
+!memory/inspirations/**
