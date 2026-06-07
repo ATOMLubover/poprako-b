@@ -1,3 +1,5 @@
+use regex::Regex;
+
 fn metadata_value<'a>(meta: &'a str, key: &str) -> Option<&'a str> {
     let prefix = format!("{}: ", key);
     let start = meta.find(&prefix)? + prefix.len();
@@ -31,9 +33,13 @@ impl<'a> MatchInput<'a> {
         }
     }
 
-    pub fn contains(&self, keyword: &str) -> bool {
-        self.body.contains(keyword)
-            || self.sender_nickname == Some(keyword)
-            || self.sender_channel_nickname == Some(keyword)
+    pub fn is_match(&self, pattern: &Regex) -> bool {
+        pattern.is_match(self.body)
+            || self
+                .sender_nickname
+                .is_some_and(|nickname| pattern.is_match(nickname))
+            || self
+                .sender_channel_nickname
+                .is_some_and(|nickname| pattern.is_match(nickname))
     }
 }

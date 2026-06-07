@@ -35,8 +35,8 @@ fn inject_inspiration<M, A>(
     A: IInspirationAnnotated + Default,
 {
     let content = format!(
-        "[注入上下文：灵感资料]\n来源：系统\n编号：{}\n说明：这不是真实用户发言。只把它当作当前对话的背景资料，不要直接回应本消息。\n\n{}\n[/注入上下文]",
-        entry.id, entry.content
+        "[灵光一闪][{}][{}] {}",
+        entry.namespace, entry.title, entry.content
     );
     let message = M::from(MessageOwned::User { content });
 

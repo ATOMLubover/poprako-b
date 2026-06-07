@@ -1,4 +1,5 @@
 use crate::ai::resolver::message::IMessage;
+use crate::ai::resolver::message::MessageRef;
 use crate::ai::resolver::tool::ToolDefination;
 
 #[derive(Debug, Clone)]
@@ -18,6 +19,46 @@ where
         Self {
             message,
             annotation,
+        }
+    }
+}
+
+fn trace_annotated_message<M, A>(event: &'static str, message: &AnnotatedMessage<M, A>)
+where
+    M: IMessage + 'static,
+{
+    match message.message.message_ref() {
+        MessageRef::System { content } => {
+            tracing::info!(event, role = "system", content, "context message changed");
+        }
+        MessageRef::User { content } => {
+            tracing::info!(event, role = "user", content, "context message changed");
+        }
+        MessageRef::Assist {
+            content,
+            tool_calls,
+            refusal,
+        } => {
+            tracing::info!(
+                event,
+                role = "assistant",
+                content,
+                tool_call_count = tool_calls.map(|calls| calls.len()).unwrap_or_default(),
+                refusal,
+                "context message changed"
+            );
+        }
+        MessageRef::Tool {
+            tool_call_id,
+            content,
+        } => {
+            tracing::info!(
+                event,
+                role = "tool",
+                tool_call_id,
+                content,
+                "context message changed"
+            );
         }
     }
 }
@@ -59,6 +100,8 @@ where
     }
 
     pub fn push_annotated_message(&mut self, message: AnnotatedMessage<M, A>) {
+        trace_annotated_message("push_annotated_message", &message);
+
         self.messages.push(message);
     }
 
@@ -69,6 +112,8 @@ where
             return;
         };
 
+        trace_annotated_message("inject_before_last", &message);
+
         self.messages.insert(index, message);
     }
 
@@ -77,6 +122,11 @@ where
     }
 
     pub fn set_annotated_messages(&mut self, messages: Vec<AnnotatedMessage<M, A>>) {
+        tracing::info!(
+            message_count = messages.len(),
+            "replacing all annotated messages in context"
+        );
+
         self.messages = messages;
     }
 
@@ -107,8 +157,7 @@ where
     A: Default,
 {
     pub fn push_message(&mut self, message: M) {
-        self.messages
-            .push(AnnotatedMessage::new(message, A::default()));
+        self.push_annotated_message(AnnotatedMessage::new(message, A::default()));
     }
 
     pub fn take_messages(&mut self) -> Vec<M> {

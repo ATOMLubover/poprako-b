@@ -79,16 +79,22 @@ mod tests {
 
     fn test_registry() -> KnowledgeRegistry {
         KnowledgeRegistry::from_entries(vec![
-            KnowledgeEntry {
-                id: "member.lb".to_string(),
-                pattern: "LB".to_string(),
-                content: "LB：核心开发，负责 poprako 全系列工具的开发".to_string(),
-            },
-            KnowledgeEntry {
-                id: "member.nabai".to_string(),
-                pattern: "那白".to_string(),
-                content: "那白：翻译，热爱学习译法，喜欢用告白台词开玩笑".to_string(),
-            },
+            KnowledgeEntry::new(
+                "member",
+                "lb",
+                "LB",
+                "LB",
+                "LB：核心开发，负责 poprako 全系列工具的开发",
+            )
+            .unwrap(),
+            KnowledgeEntry::new(
+                "member",
+                "nabai",
+                "那白",
+                "那白",
+                "那白：翻译，热爱学习译法，喜欢用告白台词开玩笑",
+            )
+            .unwrap(),
         ])
     }
 
@@ -132,6 +138,46 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn before_solve_injects_inspiration_loaded_from_memory_files() {
+        let memory_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("memory");
+        let registry = KnowledgeRegistry::load(memory_dir).unwrap();
+        let mut interceptor = InspirationInterceptor::<
+            ChatCompletionMessageParam,
+            BotAgentState,
+            BotMessageAnnotation,
+        >::new(registry);
+        let mut state = BotAgentState::default();
+        let mut cx = ContextBuilder::<_, BotMessageAnnotation>::new("test-model")
+            .messages(vec![user(
+                "[channel_id: 1, channel_name: -, sender_id: 2, sender_nickname: Dryice, sender_channel_nickname: -, sender_prks_id: -, sent_at: now]\n在吗",
+            )])
+            .build();
+
+        interceptor.before_solve(&mut state, &mut cx).await;
+
+        assert_eq!(cx.message_count(), 2);
+        assert!(
+            state
+                .inspired_state_mut()
+                .active_knowledge_ids
+                .contains("role-assignment.dryice")
+        );
+        assert_eq!(
+            cx.annotated_messages()[0]
+                .annotation
+                .inspired_annotation()
+                .knowledge_id(),
+            Some("role-assignment.dryice")
+        );
+        match cx.annotated_messages()[0].message.message_ref() {
+            MessageRef::User { content } => {
+                assert_eq!(content, "[灵光一闪][role-assignment][dryice] 职位：嵌字")
+            }
+            _ => panic!("注入资料应该作为用户上下文消息写入"),
+        }
+    }
+
+    #[tokio::test]
     async fn before_solve_does_not_duplicate_active_inspiration() {
         let mut interceptor = InspirationInterceptor::<
             ChatCompletionMessageParam,
@@ -157,16 +203,8 @@ mod tests {
     #[tokio::test]
     async fn before_solve_injects_entries_with_same_pattern() {
         let registry = KnowledgeRegistry::from_entries(vec![
-            KnowledgeEntry {
-                id: "member.first".to_string(),
-                pattern: "LB".to_string(),
-                content: "first".to_string(),
-            },
-            KnowledgeEntry {
-                id: "member.second".to_string(),
-                pattern: "LB".to_string(),
-                content: "second".to_string(),
-            },
+            KnowledgeEntry::new("member", "first", "first", "LB", "first").unwrap(),
+            KnowledgeEntry::new("member", "second", "second", "LB", "second").unwrap(),
         ]);
         let mut interceptor = InspirationInterceptor::<
             ChatCompletionMessageParam,
@@ -211,7 +249,7 @@ mod tests {
         let mut cx = ContextBuilder::<_, BotMessageAnnotation>::new("test-model")
             .annotated_messages(vec![
                 annotated_user(
-                    "[注入上下文：灵感资料]\n来源：系统\n编号：member.nabai\n说明：这不是真实用户发言。只把它当作当前对话的背景资料，不要直接回应本消息。\n\n那白：翻译\n[/注入上下文]",
+                    "[灵光一闪][member][那白] 那白：翻译",
                     InspiredAnnotation::with_knowledge_id("member.nabai"),
                 ),
                 annotated_user("那白在吗", InspiredAnnotation::default()),

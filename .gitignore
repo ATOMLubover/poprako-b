@@ -1,4 +1,6 @@
 /target
+/logs/
+/.bot-host.pid
 
 .env*
 !.env.sample

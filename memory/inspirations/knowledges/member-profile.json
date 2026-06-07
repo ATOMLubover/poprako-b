@@ -1,12 +1,14 @@
 [
   {
     "id": "lb",
-    "pattern": "LB",
-    "content": "核心开发，负责 poprako 全系列工具的开发"
+    "pattern": "(?i:LB)",
+    "content": "核心开发，负责 poprako 全系列工具的开发",
+    "title": "lb"
   },
   {
     "id": "niuniu",
     "pattern": "牛牛|灰暗天穹",
-    "content": "喜欢剧情、画工、萝莉；巨乳是减分项"
+    "content": "喜欢剧情、画工、萝莉；巨乳是减分项",
+    "title": "niuniu"
   }
 ]
