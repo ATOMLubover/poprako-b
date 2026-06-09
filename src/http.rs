@@ -19,23 +19,16 @@ impl HttpClient {
         }
     }
 
-    pub async fn get<R>(&self, path: Url) -> HttpResult<R>
+    pub async fn get<R>(&self, url: Url) -> HttpResult<R>
     where
         R: serde::de::DeserializeOwned,
     {
-        self.get_with_query(path, &[], None).await
-    }
-
-    pub async fn get_path<R>(&self, path: &str) -> HttpResult<R>
-    where
-        R: serde::de::DeserializeOwned,
-    {
-        self.get_path_with_query(path, &[], None).await
+        self.get_with_query(url, &[], None).await
     }
 
     pub async fn get_with_query<R>(
         &self,
-        path: Url,
+        url: Url,
         query: &[(String, String)],
         bearer_token: Option<&str>,
     ) -> HttpResult<R>
@@ -43,8 +36,8 @@ impl HttpClient {
         R: serde::de::DeserializeOwned,
     {
         let mut url = match &self.base_url {
-            Some(base) => base.join(path.as_str())?,
-            None => path,
+            Some(base) => base.join(url.as_str())?,
+            None => url,
         };
 
         if !query.is_empty() {
@@ -64,27 +57,9 @@ impl HttpClient {
         Ok(response.json().await?)
     }
 
-    pub async fn get_path_with_query<R>(
-        &self,
-        path: &str,
-        query: &[(String, String)],
-        bearer_token: Option<&str>,
-    ) -> HttpResult<R>
-    where
-        R: serde::de::DeserializeOwned,
-    {
-        let base = self
-            .base_url
-            .as_ref()
-            .ok_or_else(|| result::HttpError::InvalidUrl("missing base url".to_string()))?;
-        let url = base.join(path)?;
-
-        self.get_with_query(url, query, bearer_token).await
-    }
-
     pub async fn post<P, R>(
         &self,
-        path: Url,
+        url: Url,
         payload: &P,
         query: &[(String, String)],
         bearer_token: Option<&str>,
@@ -94,8 +69,8 @@ impl HttpClient {
         R: serde::de::DeserializeOwned,
     {
         let mut url = match &self.base_url {
-            Some(base) => base.join(path.as_str())?,
-            None => path,
+            Some(base) => base.join(url.as_str())?,
+            None => url,
         };
 
         if !query.is_empty() {
@@ -106,7 +81,9 @@ impl HttpClient {
         }
 
         let mut headers = HeaderMap::new();
+
         headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+
         if let Some(token) = bearer_token {
             let value = HeaderValue::from_str(&format!("Bearer {}", token))
                 .map_err(|e| result::HttpError::Unknown(e.to_string()))?;
@@ -122,26 +99,6 @@ impl HttpClient {
             .await?;
 
         Ok(response.json().await?)
-    }
-
-    pub async fn post_path<P, R>(
-        &self,
-        path: &str,
-        payload: &P,
-        query: &[(String, String)],
-        bearer_token: Option<&str>,
-    ) -> HttpResult<R>
-    where
-        P: serde::ser::Serialize,
-        R: serde::de::DeserializeOwned,
-    {
-        let base = self
-            .base_url
-            .as_ref()
-            .ok_or_else(|| result::HttpError::InvalidUrl("missing base url".to_string()))?;
-        let url = base.join(path)?;
-
-        self.post(url, payload, query, bearer_token).await
     }
 }
 

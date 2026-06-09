@@ -7,19 +7,19 @@ mod tool;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use openai_oxide::types::chat::ChatCompletionMessageParam;
 use plugin::inspiration::plugin_inspiration;
 use plugin::memory_shard::plugin_memory_shard;
 use state::BotAgentState;
 use state::BotMessageAnnotation;
 use tool::build_tools;
 
-use crate::ai::agent::Agent;
-use crate::ai::agent::AgentBuilder;
 use crate::ai::agent::tool::remote::RemoteProxy;
+use crate::ai::agent_impl::deepseek::DeepSeekAgent;
+use crate::ai::agent_impl::deepseek::DeepSeekAgentBuilder;
 use crate::ai::resolver::context::ContextBuilder;
 use crate::ai::resolver::message::MessageOwned;
-use crate::ai::resolver_impl::openai::OpenAiResolver;
+use crate::ai::resolver_impl::deepseek::data_object::DeepSeekMessage;
+use crate::ai::resolver_impl::deepseek::DeepSeekResolver;
 use crate::bot::agent::prompt::system_prompt;
 use crate::bot::message::ChannelMessage;
 
@@ -34,14 +34,14 @@ pub use prompt::watch_system_prompt;
 const MODEL_NAME: &str = "deepseek-v4-flash";
 
 pub struct BotAgent {
-    agent: Agent<ChatCompletionMessageParam, OpenAiResolver, BotAgentState, BotMessageAnnotation>,
+    agent: DeepSeekAgent<BotAgentState, BotMessageAnnotation>,
     /// Map from channel actor id to poprako-s user_id.
     id_transform: HashMap<String, String>,
 }
 
 impl BotAgent {
     pub async fn new() -> anyhow::Result<Self> {
-        let resolver = OpenAiResolver::from_env();
+        let resolver = DeepSeekResolver::from_env();
 
         let system_prompt = system_prompt()?;
 
@@ -49,7 +49,7 @@ impl BotAgent {
         let remote_proxy = RemoteProxy::from_local_config().await.ok();
         let inspiration_plugin = plugin_inspiration(memory_dir())?;
 
-        let context = ContextBuilder::<_, BotMessageAnnotation>::new(MODEL_NAME)
+        let context = ContextBuilder::<DeepSeekMessage, BotMessageAnnotation>::new(MODEL_NAME)
             .messages(vec![
                 MessageOwned::System {
                     content: system_prompt,
@@ -58,12 +58,13 @@ impl BotAgent {
             ])
             .build();
 
-        let agent = AgentBuilder::new_with_state(BotAgentState::default(), context, resolver)
-            .tools(tools)
-            .remote_proxy(remote_proxy)
-            .plugin(inspiration_plugin)
-            .plugin(plugin_memory_shard())
-            .build();
+        let agent =
+            DeepSeekAgentBuilder::new_with_state(BotAgentState::default(), context, resolver)
+                .tools(tools)
+                .remote_proxy(remote_proxy)
+                .plugin(inspiration_plugin)
+                .plugin(plugin_memory_shard())
+                .build();
 
         Ok(Self {
             agent,
@@ -99,10 +100,12 @@ impl BotAgent {
 #[cfg(test)]
 impl BotAgent {
     pub fn new_for_test() -> Self {
-        let resolver = OpenAiResolver::from_env();
-        let context = ContextBuilder::<_, BotMessageAnnotation>::new("test-model").build();
+        let resolver = DeepSeekResolver::from_env();
+        let context =
+            ContextBuilder::<DeepSeekMessage, BotMessageAnnotation>::new("test-model").build();
         let agent =
-            AgentBuilder::new_with_state(BotAgentState::default(), context, resolver).build();
+            DeepSeekAgentBuilder::new_with_state(BotAgentState::default(), context, resolver)
+                .build();
 
         Self {
             agent,

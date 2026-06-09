@@ -262,16 +262,16 @@ impl KnowledgeRegistry {
     ) -> Vec<KnowledgeEntry> {
         self.entries
             .iter()
-            .cloned()
             .filter(|entry| !state.active_knowledge_ids.contains(&entry.id))
             .filter(|entry| entry.matches(input))
+            .cloned()
             .collect()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
 
     use uuid::Uuid;
 
@@ -286,7 +286,7 @@ mod tests {
         ))
     }
 
-    fn write_entry(memory_dir: &PathBuf, path: &str, raw: &str) {
+    fn write_entry(memory_dir: &Path, path: &str, raw: &str) {
         let path = memory_dir
             .join("inspirations")
             .join("knowledges")

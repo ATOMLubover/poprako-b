@@ -68,8 +68,8 @@ pub async fn build_tools() -> Vec<DynTool> {
         }
     };
 
-    let http_client = HttpClient::new(Some(url));
-    let token = match PrksClient::login(&http_client, &qid, &password).await {
+    let http_client = HttpClient::new(None);
+    let token = match PrksClient::login(&http_client, &url, &qid, &password).await {
         Ok(token) => token,
         Err(error) => {
             tracing::warn!(error = %error, "poprako-s login failed, skip poprako-s tools");
@@ -77,7 +77,7 @@ pub async fn build_tools() -> Vec<DynTool> {
         }
     };
 
-    let prks_client = Arc::new(PrksClient::new(http_client, token));
+    let prks_client = Arc::new(PrksClient::new(http_client, url, token));
 
     tools.push(Box::new(ListMyMembersTool::new(prks_client.clone())));
     tools.push(Box::new(ListTeamWorksetsTool::new(prks_client.clone())));

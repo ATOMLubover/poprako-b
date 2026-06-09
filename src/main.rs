@@ -55,7 +55,7 @@ async fn main() -> Result<()> {
     dotenvy::dotenv().ok();
 
     let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
-    let _guard = init_tracing(env_filter);
+    init_tracing(env_filter);
 
     poprako_b_preview::bot::run_server().await
 }
