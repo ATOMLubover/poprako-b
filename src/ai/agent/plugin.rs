@@ -13,12 +13,12 @@ where
     A: Default + Send + Sync + 'static,
 {
     /// Takes all tools provided.
-    fn take_tools(&mut self) -> Vec<DynTool> {
+    fn tools(&mut self) -> Vec<DynTool> {
         Vec::default()
     }
 
     /// Takes all interceptors provided.
-    fn take_interceptors(&mut self) -> Vec<DynInterceptor<S, M, A>> {
+    fn interceptors(&mut self) -> Vec<DynInterceptor<S, M, A>> {
         Vec::default()
     }
 }

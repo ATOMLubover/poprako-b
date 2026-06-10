@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use crate::ai::agent::plugin::embedded_local::memory_shard::memory_shard_plugin;
-use plugin::inspiration::InspirationCompact;
+use plugin::inspiration::BotCompact;
 use plugin::inspiration::inspiration_plugin;
 use state::BotAgentState;
 use state::BotMessageAnnotation;
@@ -36,8 +36,6 @@ const MODEL_NAME: &str = "deepseek-v4-flash";
 
 pub struct BotAgent {
     agent: DeepSeekAgent<BotAgentState, BotMessageAnnotation>,
-    /// Map from channel actor id to poprako-s user_id.
-    id_transform: HashMap<String, String>,
 }
 
 impl BotAgent {
@@ -62,19 +60,12 @@ impl BotAgent {
             DeepSeekAgentBuilder::new_with_state(BotAgentState::default(), context, resolver)
                 .tools(tools)
                 .remote_proxy(remote_proxy)
-                .compact(InspirationCompact::<
-                    DeepSeekMessage,
-                    BotAgentState,
-                    BotMessageAnnotation,
-                >::default())
+                .compact(BotCompact::default())
                 .plugin(inspiration_plugin(memory_dir())?)
                 .plugin(memory_shard_plugin(memory_dir()))
                 .build();
 
-        Ok(Self {
-            agent,
-            id_transform: HashMap::new(),
-        })
+        Ok(Self { agent })
     }
 
     /// Reload the system prompt at messages[0] without affecting the
@@ -86,15 +77,9 @@ impl BotAgent {
     }
 
     pub async fn try_answer(&mut self, message: ChannelMessage, content: String) -> Option<String> {
-        let sender_id = message.actor.id.as_str();
-        let sender_prks_id = self
-            .id_transform
-            .get(sender_id)
-            .map(String::as_str)
-            .unwrap_or("-");
-
         let user_message = MessageOwned::User {
-            content: prompt_text(message, content, sender_prks_id),
+            // TODO: use actual sender_prks_id instead of "-"
+            content: prompt_text(message, content, "-"),
         }
         .into();
 
@@ -112,10 +97,7 @@ impl BotAgent {
             DeepSeekAgentBuilder::new_with_state(BotAgentState::default(), context, resolver)
                 .build();
 
-        Self {
-            agent,
-            id_transform: HashMap::new(),
-        }
+        Self { agent }
     }
 }
 

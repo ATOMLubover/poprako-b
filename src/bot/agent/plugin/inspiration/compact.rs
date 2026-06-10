@@ -26,11 +26,11 @@ where
         .collect()
 }
 
-pub struct InspirationCompact<M, S, A> {
+pub struct BotCompact<M, S, A> {
     inner: SlidingWindowCompact<M, S, A>,
 }
 
-impl<M, S, A> Default for InspirationCompact<M, S, A> {
+impl<M, S, A> Default for BotCompact<M, S, A> {
     fn default() -> Self {
         Self {
             inner: SlidingWindowCompact::default(),
@@ -39,7 +39,7 @@ impl<M, S, A> Default for InspirationCompact<M, S, A> {
 }
 
 #[async_trait]
-impl<M, S, A> ICompact for InspirationCompact<M, S, A>
+impl<M, S, A> ICompact for BotCompact<M, S, A>
 where
     M: IMessage + Send + Sync + 'static,
     S: IInspirationEmbedded + Send + Sync + 'static,

@@ -44,7 +44,7 @@ where
     S: Send + Sync + 'static,
     A: Default + Send + Sync + 'static,
 {
-    fn take_tools(&mut self) -> Vec<DynTool> {
+    fn tools(&mut self) -> Vec<DynTool> {
         vec![
             Box::new(RecallMemoryShardTool::new(self.memory_dir.clone())),
             Box::new(GenerateMemoryShardTool::new(self.memory_dir.clone())),
@@ -52,7 +52,7 @@ where
         ]
     }
 
-    fn take_interceptors(&mut self) -> Vec<DynInterceptor<S, M, A>> {
+    fn interceptors(&mut self) -> Vec<DynInterceptor<S, M, A>> {
         vec![Box::new(MemoryShardInterceptor::<M, S, A>::new(
             self.memory_dir.clone(),
         ))]

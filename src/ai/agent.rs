@@ -483,8 +483,8 @@ where
     where
         P: IAgentPlugin<M, R, S, A>,
     {
-        self.tools.extend(plugin.take_tools());
-        self.interceptors.extend(plugin.take_interceptors());
+        self.tools.extend(plugin.tools());
+        self.interceptors.extend(plugin.interceptors());
         self
     }
 }
