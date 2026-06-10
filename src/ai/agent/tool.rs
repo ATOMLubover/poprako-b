@@ -1,7 +1,7 @@
 use crate::ai::agent::tool::result::ExecutionResult;
 use crate::ai::resolver::tool::ToolDefination;
 
-pub mod local;
+pub mod embedded_local;
 pub mod remote;
 
 /// ITool represents a tool that can be called by the agent. It should have a name,

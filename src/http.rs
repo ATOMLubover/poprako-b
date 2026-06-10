@@ -54,6 +54,12 @@ impl HttpClient {
 
         let response = req.send().await?;
 
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(result::HttpError::ResponseBody(format!("HTTP {status}: {body}")));
+        }
+
         Ok(response.json().await?)
     }
 
@@ -97,6 +103,12 @@ impl HttpClient {
             .json(payload)
             .send()
             .await?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(result::HttpError::ResponseBody(format!("HTTP {status}: {body}")));
+        }
 
         Ok(response.json().await?)
     }

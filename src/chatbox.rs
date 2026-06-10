@@ -338,7 +338,7 @@ async fn send_message(
         .solution_id
         .ok_or_else(|| ApiError::internal("before checkpoint did not create a solution id"))?;
     let assistant = agent
-        .solve(user_message)
+        .evaluate(user_message)
         .await
         .ok_or_else(|| ApiError::internal("LLM did not produce a final assistant response"))?;
     let after_snapshot = state

@@ -5,7 +5,7 @@ use openai_oxide::types::chat::{ChatCompletionMessageParam, UserContent};
 
 use crate::ai::agent::tool::DynTool;
 use crate::ai::agent::tool::ITool;
-use crate::ai::agent::tool::local::fs::{ListFilesTool, ReadFileTool};
+use crate::ai::agent::tool::embedded_local::fs::{ListFilesTool, ReadFileTool};
 use crate::ai::agent::tool::result::{ExecutionError, ExecutionResult};
 use crate::ai::agent_impl::openai::OpenAiAgentBuilder;
 use crate::ai::resolver::context::ContextBuilder;
@@ -202,7 +202,7 @@ async fn run_sub_agent(
             let mut agent = OpenAiAgentBuilder::new(cx, resolver).tools(tools).build();
 
             agent
-                .solve(ChatCompletionMessageParam::User {
+                .evaluate(ChatCompletionMessageParam::User {
                     content: UserContent::Text(user_prompt.to_string()),
                     name: None,
                 })

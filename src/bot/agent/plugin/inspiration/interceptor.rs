@@ -69,7 +69,7 @@ where
     S: IInspirationEmbedded + Send + Sync + 'static,
     A: IInspirationAnnotated + Default + Send + Sync + 'static,
 {
-    async fn before_solve(&mut self, state: &mut S, cx: &mut Context<M, A>) -> InterceptorFlow {
+    async fn before_evaluate(&mut self, state: &mut S, cx: &mut Context<M, A>) -> InterceptorFlow {
         let Some(user_text) = last_user_text(cx) else {
             return InterceptorFlow::Continue;
         };

@@ -1,3 +1,8 @@
+pub mod compact;
+pub mod interceptor;
+pub mod plugin;
+pub mod tool;
+
 use std::collections::HashMap;
 use std::collections::HashSet;
 
@@ -7,7 +12,6 @@ use crate::ai::agent::interceptor::IInterceptor;
 use crate::ai::agent::interceptor::InterceptorFlow;
 use crate::ai::agent::interceptor::InterceptorRegistry;
 use crate::ai::agent::interceptor::ToolInterceptorFlow;
-use crate::ai::agent::plugin::IAgentPlugin;
 use crate::ai::agent::tool::DynTool;
 use crate::ai::agent::tool::remote::RemoteProxy;
 use crate::ai::agent::tool::result::CallOutput;
@@ -20,12 +24,9 @@ use crate::ai::resolver::context::Context;
 use crate::ai::resolver::message::{IMessage, MessageRef};
 use crate::ai::resolver::tool::IToolCall;
 
-pub mod compact;
-pub mod interceptor;
-pub mod plugin;
-pub mod tool;
+pub use plugin::IAgentPlugin;
 
-enum SolveFlow<T> {
+enum EvaluateFlow<T> {
     Continue(T),
     Finish(Option<String>),
 }
@@ -124,20 +125,20 @@ where
 
     /// Run the agent loop. Returns the final assistant text response, or `None`
     /// if the resolver failed before producing a final answer.
-    pub async fn solve(&mut self, message: M) -> Option<String> {
+    pub async fn evaluate(&mut self, message: M) -> Option<String> {
         self.context.push_message(message);
         self.compact().await;
 
-        if let SolveFlow::Finish(output) = self.run_before_solve().await {
-            return self.finish_solve(output).await;
+        if let EvaluateFlow::Finish(output) = self.run_before_evaluate().await {
+            return self.finish_evaluate(output).await;
         }
 
         let mut loop_index = 0;
 
         loop {
-            match self.solve_loop(loop_index).await {
-                SolveFlow::Continue(()) => loop_index += 1,
-                SolveFlow::Finish(output) => return self.finish_solve(output).await,
+            match self.try_evaluate(loop_index).await {
+                EvaluateFlow::Continue(()) => loop_index += 1,
+                EvaluateFlow::Finish(output) => return self.finish_evaluate(output).await,
             }
         }
     }
@@ -166,38 +167,38 @@ where
         )))
     }
 
-    async fn run_before_solve(&mut self) -> SolveFlow<()> {
+    async fn run_before_evaluate(&mut self) -> EvaluateFlow<()> {
         Self::interceptor_flow(
             self.interceptor_registry
-                .before_solve(&mut self.state, &mut self.context)
+                .before_evaluate(&mut self.state, &mut self.context)
                 .await,
         )
     }
 
-    async fn solve_loop(&mut self, loop_index: usize) -> SolveFlow<()> {
-        if let SolveFlow::Finish(output) = self.run_before_loop(loop_index).await {
-            return SolveFlow::Finish(output);
+    async fn try_evaluate(&mut self, loop_index: usize) -> EvaluateFlow<()> {
+        if let EvaluateFlow::Finish(output) = self.run_before_loop(loop_index).await {
+            return EvaluateFlow::Finish(output);
         }
 
         let mut action = match self.resolve_action().await {
-            SolveFlow::Continue(action) => action,
-            SolveFlow::Finish(output) => return SolveFlow::Finish(output),
+            EvaluateFlow::Continue(action) => action,
+            EvaluateFlow::Finish(output) => return EvaluateFlow::Finish(output),
         };
 
-        if let SolveFlow::Finish(output) = self.run_after_resolve(&mut action).await {
-            return SolveFlow::Finish(output);
+        if let EvaluateFlow::Finish(output) = self.run_after_resolve(&mut action).await {
+            return EvaluateFlow::Finish(output);
         }
 
         let mut tool_messages = match self.build_tool_messages(&action).await {
-            SolveFlow::Continue(messages) => messages,
-            SolveFlow::Finish(output) => return SolveFlow::Finish(output),
+            EvaluateFlow::Continue(messages) => messages,
+            EvaluateFlow::Finish(output) => return EvaluateFlow::Finish(output),
         };
 
-        if let SolveFlow::Finish(output) = self
+        if let EvaluateFlow::Finish(output) = self
             .run_before_commit_messages(&mut action, &mut tool_messages)
             .await
         {
-            return SolveFlow::Finish(output);
+            return EvaluateFlow::Finish(output);
         }
 
         let reason = action.reason.clone();
@@ -205,25 +206,25 @@ where
 
         self.commit_messages(action, tool_messages);
 
-        if let SolveFlow::Finish(output) = self.run_after_loop(loop_index).await {
-            return SolveFlow::Finish(output);
+        if let EvaluateFlow::Finish(output) = self.run_after_loop(loop_index).await {
+            return EvaluateFlow::Finish(output);
         }
 
         match reason {
-            Reason::Finish => SolveFlow::Finish(finish_content),
+            Reason::Finish => EvaluateFlow::Finish(finish_content),
             // FIXME: ToolCall, Length, Unknown -> continue the loop.
-            _ => SolveFlow::Continue(()),
+            _ => EvaluateFlow::Continue(()),
         }
     }
 
-    async fn run_before_loop(&mut self, loop_index: usize) -> SolveFlow<()> {
+    async fn run_before_loop(&mut self, loop_index: usize) -> EvaluateFlow<()> {
         let flow = self
             .interceptor_registry
             .before_loop(&mut self.state, &mut self.context, loop_index)
             .await;
 
-        if let SolveFlow::Finish(output) = Self::interceptor_flow(flow) {
-            return SolveFlow::Finish(output);
+        if let EvaluateFlow::Finish(output) = Self::interceptor_flow(flow) {
+            return EvaluateFlow::Finish(output);
         }
 
         Self::interceptor_flow(
@@ -233,20 +234,20 @@ where
         )
     }
 
-    async fn resolve_action(&mut self) -> SolveFlow<Action<M::ToolCall>> {
+    async fn resolve_action(&mut self) -> EvaluateFlow<Action<M::ToolCall>> {
         match self.resolver.resolve(&self.context).await {
             Ok(action) => {
                 tracing::debug!("resolver produced action: {:?}", action);
-                SolveFlow::Continue(action)
+                EvaluateFlow::Continue(action)
             }
             Err(e) => {
                 tracing::error!("resolve failed: {:?}", e);
-                SolveFlow::Finish(None)
+                EvaluateFlow::Finish(None)
             }
         }
     }
 
-    async fn run_after_resolve(&mut self, action: &mut Action<M::ToolCall>) -> SolveFlow<()> {
+    async fn run_after_resolve(&mut self, action: &mut Action<M::ToolCall>) -> EvaluateFlow<()> {
         Self::interceptor_flow(
             self.interceptor_registry
                 .after_resolve(&mut self.state, &mut self.context, action)
@@ -254,26 +255,29 @@ where
         )
     }
 
-    async fn build_tool_messages(&mut self, action: &Action<M::ToolCall>) -> SolveFlow<Vec<M>> {
+    async fn build_tool_messages(&mut self, action: &Action<M::ToolCall>) -> EvaluateFlow<Vec<M>> {
         let Some(calls) = &action.tool_calls else {
-            return SolveFlow::Continue(Vec::new());
+            return EvaluateFlow::Continue(Vec::new());
         };
 
         let mut messages = Vec::with_capacity(calls.len());
 
         for call in calls {
             let result = match self.call_tool_with_interceptors(call).await {
-                SolveFlow::Continue(result) => result,
-                SolveFlow::Finish(output) => return SolveFlow::Finish(output),
+                EvaluateFlow::Continue(result) => result,
+                EvaluateFlow::Finish(output) => return EvaluateFlow::Finish(output),
             };
 
             messages.push(Self::tool_message_from_result(call, &result));
         }
 
-        SolveFlow::Continue(messages)
+        EvaluateFlow::Continue(messages)
     }
 
-    async fn call_tool_with_interceptors(&mut self, call: &M::ToolCall) -> SolveFlow<CallResult> {
+    async fn call_tool_with_interceptors(
+        &mut self,
+        call: &M::ToolCall,
+    ) -> EvaluateFlow<CallResult> {
         let mut result = match self
             .interceptor_registry
             .before_tool_call(&mut self.state, &mut self.context, call)
@@ -283,7 +287,7 @@ where
             ToolInterceptorFlow::Skip { content } => {
                 Ok(CallOutput::new(call.id().to_string(), content))
             }
-            ToolInterceptorFlow::Stop { output } => return SolveFlow::Finish(output),
+            ToolInterceptorFlow::Stop { output } => return EvaluateFlow::Finish(output),
         };
 
         match self
@@ -291,8 +295,8 @@ where
             .after_tool_call(&mut self.state, &mut self.context, call, &mut result)
             .await
         {
-            InterceptorFlow::Continue => SolveFlow::Continue(result),
-            InterceptorFlow::Stop { output } => SolveFlow::Finish(output),
+            InterceptorFlow::Continue => EvaluateFlow::Continue(result),
+            InterceptorFlow::Stop { output } => EvaluateFlow::Finish(output),
         }
     }
 
@@ -316,7 +320,7 @@ where
         &mut self,
         action: &mut Action<M::ToolCall>,
         tool_messages: &mut Vec<M>,
-    ) -> SolveFlow<()> {
+    ) -> EvaluateFlow<()> {
         Self::interceptor_flow(
             self.interceptor_registry
                 .before_commit_messages(&mut self.state, &mut self.context, action, tool_messages)
@@ -340,7 +344,7 @@ where
         }
     }
 
-    async fn run_after_loop(&mut self, loop_index: usize) -> SolveFlow<()> {
+    async fn run_after_loop(&mut self, loop_index: usize) -> EvaluateFlow<()> {
         Self::interceptor_flow(
             self.interceptor_registry
                 .after_loop(&mut self.state, &mut self.context, loop_index)
@@ -348,17 +352,17 @@ where
         )
     }
 
-    fn interceptor_flow(flow: InterceptorFlow) -> SolveFlow<()> {
+    fn interceptor_flow(flow: InterceptorFlow) -> EvaluateFlow<()> {
         match flow {
-            InterceptorFlow::Continue => SolveFlow::Continue(()),
-            InterceptorFlow::Stop { output } => SolveFlow::Finish(output),
+            InterceptorFlow::Continue => EvaluateFlow::Continue(()),
+            InterceptorFlow::Stop { output } => EvaluateFlow::Finish(output),
         }
     }
 
-    async fn finish_solve(&mut self, mut output: Option<String>) -> Option<String> {
+    async fn finish_evaluate(&mut self, mut output: Option<String>) -> Option<String> {
         match self
             .interceptor_registry
-            .after_solve(&mut self.state, &mut self.context, &mut output)
+            .after_evaluate(&mut self.state, &mut self.context, &mut output)
             .await
         {
             InterceptorFlow::Continue => output,
@@ -475,13 +479,12 @@ where
         agent
     }
 
-    pub fn plugin<P>(self, mut plugin: P) -> Self
+    pub fn plugin<P>(mut self, mut plugin: P) -> Self
     where
         P: IAgentPlugin<M, R, S, A>,
     {
-        self.tools(plugin.take_tools());
-        self.interceptor(plugin.take_interceptors());
-
+        self.tools.extend(plugin.take_tools());
+        self.interceptors.extend(plugin.take_interceptors());
         self
     }
 }
@@ -498,7 +501,7 @@ mod tests {
     use crate::ai::agent::compact::ICompact;
     use crate::ai::agent::compact::SlidingWindowCompact;
     use crate::ai::agent::interceptor::InterceptorFlow;
-    use crate::ai::agent::tool::local::fs::{CreateFileTool, ReadFileTool};
+    use crate::ai::agent::tool::embedded_local::fs::{CreateFileTool, ReadFileTool};
     use crate::ai::resolver::context::AnnotatedMessage;
     use crate::ai::resolver::context::ContextBuilder;
     use crate::ai::resolver::result::ResolveResult;
@@ -535,11 +538,11 @@ mod tests {
         }
     }
 
-    struct StopBeforeSolve;
+    struct StopBeforeEvaluate;
 
     #[async_trait::async_trait]
-    impl IInterceptor<(), ChatCompletionMessageParam, ()> for StopBeforeSolve {
-        async fn before_solve(
+    impl IInterceptor<(), ChatCompletionMessageParam, ()> for StopBeforeEvaluate {
+        async fn before_evaluate(
             &mut self,
             _state: &mut (),
             _cx: &mut Context<ChatCompletionMessageParam>,
@@ -564,7 +567,7 @@ mod tests {
             InterceptorFlow::Continue
         }
 
-        async fn after_solve(
+        async fn after_evaluate(
             &mut self,
             _state: &mut (),
             _cx: &mut Context<ChatCompletionMessageParam>,
@@ -577,26 +580,26 @@ mod tests {
 
     #[derive(Default)]
     struct TestState {
-        after_solve_count: usize,
+        after_evaluate_count: usize,
     }
 
-    struct CountAfterSolve;
+    struct CountAfterEvaluate;
 
     #[async_trait::async_trait]
-    impl IInterceptor<TestState, ChatCompletionMessageParam, ()> for CountAfterSolve {
-        async fn after_solve(
+    impl IInterceptor<TestState, ChatCompletionMessageParam, ()> for CountAfterEvaluate {
+        async fn after_evaluate(
             &mut self,
             state: &mut TestState,
             _cx: &mut Context<ChatCompletionMessageParam>,
             _output: &mut Option<String>,
         ) -> InterceptorFlow {
-            state.after_solve_count += 1;
+            state.after_evaluate_count += 1;
             InterceptorFlow::Continue
         }
     }
 
     #[tokio::test]
-    async fn before_solve_interceptor_can_stop_without_resolving() {
+    async fn before_evaluate_interceptor_can_stop_without_resolving() {
         let calls = Arc::new(AtomicUsize::new(0));
         let resolver = CountingResolver {
             calls: Arc::clone(&calls),
@@ -605,11 +608,11 @@ mod tests {
         let cx = ContextBuilder::new("test-model").build();
 
         let mut agent = AgentBuilder::<_, _, (), ()>::new(cx, resolver)
-            .interceptor(StopBeforeSolve)
+            .interceptor(StopBeforeEvaluate)
             .build();
 
         let result = agent
-            .solve(ChatCompletionMessageParam::User {
+            .evaluate(ChatCompletionMessageParam::User {
                 content: UserContent::Text("test".to_string()),
                 name: None,
             })
@@ -633,7 +636,7 @@ mod tests {
             .build();
 
         let result = agent
-            .solve(ChatCompletionMessageParam::User {
+            .evaluate(ChatCompletionMessageParam::User {
                 content: UserContent::Text("test".to_string()),
                 name: None,
             })
@@ -652,18 +655,18 @@ mod tests {
         let cx = ContextBuilder::new("test-model").build();
 
         let mut agent = AgentBuilder::new_with_state(TestState::default(), cx, resolver)
-            .interceptor(CountAfterSolve)
+            .interceptor(CountAfterEvaluate)
             .build();
 
         let result = agent
-            .solve(ChatCompletionMessageParam::User {
+            .evaluate(ChatCompletionMessageParam::User {
                 content: UserContent::Text("test".to_string()),
                 name: None,
             })
             .await;
 
         assert_eq!(result.as_deref(), Some("done"));
-        assert_eq!(agent.state().after_solve_count, 1);
+        assert_eq!(agent.state().after_evaluate_count, 1);
     }
 
     #[tokio::test]
@@ -737,7 +740,7 @@ mod tests {
             ])
             .build();
 
-        let result = agent.solve(user_message).await;
+        let result = agent.evaluate(user_message).await;
         assert!(result.is_some(), "agent should return a final response");
         assert!(
             target_file.exists(),

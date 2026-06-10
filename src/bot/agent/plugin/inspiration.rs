@@ -1,20 +1,20 @@
 mod annotation;
-mod compact;
+pub mod compact;
 mod input;
 mod interceptor;
 mod knowledge;
 mod state;
 
-use crate::ai::agent::AgentBuilder;
 use crate::ai::agent::IAgentPlugin;
+use crate::ai::agent::interceptor::DynInterceptor;
 use crate::ai::resolver::IResolver;
 use crate::ai::resolver::message::IMessage;
-use crate::bot::agent::plugin::inspiration::compact::InspirationCompact;
 use crate::bot::agent::plugin::inspiration::interceptor::InspirationInterceptor;
 use crate::bot::agent::plugin::inspiration::knowledge::KnowledgeRegistry;
 
 pub use crate::bot::agent::plugin::inspiration::annotation::IInspirationAnnotated;
 pub use crate::bot::agent::plugin::inspiration::annotation::InspiredAnnotation;
+pub use crate::bot::agent::plugin::inspiration::compact::InspirationCompact;
 pub use crate::bot::agent::plugin::inspiration::state::IInspirationEmbedded;
 pub use crate::bot::agent::plugin::inspiration::state::InspiredState;
 
@@ -29,16 +29,14 @@ where
     S: IInspirationEmbedded + Send + Sync + 'static,
     A: IInspirationAnnotated + Default + Send + Sync + 'static,
 {
-    fn apply(&self, builder: AgentBuilder<M, R, S, A>) -> AgentBuilder<M, R, S, A> {
-        builder
-            .compact(InspirationCompact::<M, S, A>::default())
-            .interceptor(InspirationInterceptor::<M, S, A>::new(
-                self.knowledge_registry.clone(),
-            ))
+    fn take_interceptors(&mut self) -> Vec<DynInterceptor<S, M, A>> {
+        vec![Box::new(InspirationInterceptor::<M, S, A>::new(
+            self.knowledge_registry.clone(),
+        ))]
     }
 }
 
-pub fn plugin_inspiration(memory_dir: std::path::PathBuf) -> anyhow::Result<InspirationPlugin> {
+pub fn inspiration_plugin(memory_dir: std::path::PathBuf) -> anyhow::Result<InspirationPlugin> {
     Ok(InspirationPlugin {
         knowledge_registry: KnowledgeRegistry::load(memory_dir)?,
     })
@@ -99,7 +97,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn before_solve_injects_matched_inspiration_before_latest_user_message() {
+    async fn before_evaluate_injects_matched_inspiration_before_latest_user_message() {
         let mut interceptor = InspirationInterceptor::<
             ChatCompletionMessageParam,
             BotAgentState,
@@ -112,7 +110,7 @@ mod tests {
             )])
             .build();
 
-        interceptor.before_solve(&mut state, &mut cx).await;
+        interceptor.before_evaluate(&mut state, &mut cx).await;
 
         assert_eq!(cx.message_count(), 2);
         assert!(
@@ -138,7 +136,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn before_solve_injects_inspiration_loaded_from_memory_files() {
+    async fn before_evaluate_injects_inspiration_loaded_from_memory_files() {
         let memory_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("memory");
         let registry = KnowledgeRegistry::load(memory_dir).unwrap();
         let mut interceptor = InspirationInterceptor::<
@@ -153,7 +151,7 @@ mod tests {
             )])
             .build();
 
-        interceptor.before_solve(&mut state, &mut cx).await;
+        interceptor.before_evaluate(&mut state, &mut cx).await;
 
         assert_eq!(cx.message_count(), 2);
         assert!(
@@ -178,7 +176,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn before_solve_does_not_duplicate_active_inspiration() {
+    async fn before_evaluate_does_not_duplicate_active_inspiration() {
         let mut interceptor = InspirationInterceptor::<
             ChatCompletionMessageParam,
             BotAgentState,
@@ -195,13 +193,13 @@ mod tests {
             )])
             .build();
 
-        interceptor.before_solve(&mut state, &mut cx).await;
+        interceptor.before_evaluate(&mut state, &mut cx).await;
 
         assert_eq!(cx.message_count(), 1);
     }
 
     #[tokio::test]
-    async fn before_solve_injects_entries_with_same_pattern() {
+    async fn before_evaluate_injects_entries_with_same_pattern() {
         let registry = KnowledgeRegistry::from_entries(vec![
             KnowledgeEntry::new("member", "first", "first", "LB", "first").unwrap(),
             KnowledgeEntry::new("member", "second", "second", "LB", "second").unwrap(),
@@ -218,7 +216,7 @@ mod tests {
             )])
             .build();
 
-        interceptor.before_solve(&mut state, &mut cx).await;
+        interceptor.before_evaluate(&mut state, &mut cx).await;
 
         assert_eq!(cx.message_count(), 3);
         assert!(

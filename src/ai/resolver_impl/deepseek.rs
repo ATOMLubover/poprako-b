@@ -187,7 +187,14 @@ impl IResolver for DeepSeekResolver {
         let choice = response_value["choices"]
             .as_array()
             .and_then(|choices| choices.first())
-            .ok_or(ResolveError::NoChoice)?;
+            .ok_or_else(|| {
+                let err_msg = response_value["error"]["message"]
+                    .as_str()
+                    .or_else(|| response_value["error"].as_str())
+                    .map(|m| m.to_string())
+                    .unwrap_or_else(|| format!("unexpected response: {response_value}"));
+                ResolveError::NoChoice { message: err_msg }
+            })?;
 
         debug!(?choice, "first choice from LLM");
 

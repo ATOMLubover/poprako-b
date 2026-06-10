@@ -6,11 +6,8 @@ use std::sync::Arc;
 use url::Url;
 
 use crate::ai::agent::tool::DynTool;
-use crate::ai::agent::tool::local::memory::{
-    GenerateMemoryShardTool, ModifyMemoryShardTool, RecallMemoryShardTool,
-};
-use crate::ai::agent::tool::local::subagent::RunSubagentsTool;
-use crate::ai::agent::tool::local::web::WebSearchTool;
+use crate::ai::agent::tool::embedded_local::subagent::RunSubagentsTool;
+use crate::ai::agent::tool::embedded_local::web::WebSearchTool;
 use crate::bot::agent::memory_dir;
 use crate::bot::agent::tool::poprako_s::{
     GetComicPinnedChapterTool, ListChapterAssignmentsTool, ListComicChaptersTool,
@@ -31,10 +28,6 @@ pub async fn build_tools() -> Vec<DynTool> {
     let memory_dir = memory_dir();
 
     let mut tools: Vec<DynTool> = vec![
-        // ListMemoryShardsTool replaced by MemoryShardInterceptor plugin
-        Box::new(RecallMemoryShardTool::new(memory_dir.clone())),
-        Box::new(GenerateMemoryShardTool::new(memory_dir.clone())),
-        Box::new(ModifyMemoryShardTool::new(memory_dir.clone())),
         Box::new(RunSubagentsTool::new(
             "deepseek-v4-flash".into(),
             5,

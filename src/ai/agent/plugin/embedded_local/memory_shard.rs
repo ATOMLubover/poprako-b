@@ -2,20 +2,40 @@ use std::path::PathBuf;
 
 use async_trait::async_trait;
 
-use crate::ai::agent::AgentBuilder;
 use crate::ai::agent::IAgentPlugin;
+use crate::ai::agent::interceptor::DynInterceptor;
 use crate::ai::agent::interceptor::IInterceptor;
 use crate::ai::agent::interceptor::InterceptorFlow;
-use crate::ai::agent::tool::local::memory::parse_frontmatter;
+use crate::ai::agent::tool::DynTool;
+use crate::ai::agent::tool::embedded_local::memory::{
+    GenerateMemoryShardTool, ModifyMemoryShardTool, RecallMemoryShardTool, parse_frontmatter,
+};
 use crate::ai::resolver::IResolver;
 use crate::ai::resolver::context::AnnotatedMessage;
 use crate::ai::resolver::context::Context;
 use crate::ai::resolver::message::IMessage;
 use crate::ai::resolver::message::MessageOwned;
 use crate::ai::resolver::message::MessageRef;
-use crate::bot::agent::memory_dir;
 
-pub struct MemoryShardPlugin;
+// ---------------------------------------------------------------------------
+// MemoryShardPlugin
+// ---------------------------------------------------------------------------
+
+pub fn memory_shard_plugin(memory_dir: PathBuf) -> MemoryShardPlugin {
+    MemoryShardPlugin::new(memory_dir)
+}
+
+/// Plugin that provides all memory-shard functionality: directory injection
+/// (interceptor) and CRUD operations (tools).
+pub struct MemoryShardPlugin {
+    memory_dir: PathBuf,
+}
+
+impl MemoryShardPlugin {
+    pub fn new(memory_dir: PathBuf) -> Self {
+        Self { memory_dir }
+    }
+}
 
 impl<M, R, S, A> IAgentPlugin<M, R, S, A> for MemoryShardPlugin
 where
@@ -24,14 +44,24 @@ where
     S: Send + Sync + 'static,
     A: Default + Send + Sync + 'static,
 {
-    fn apply(&self, builder: AgentBuilder<M, R, S, A>) -> AgentBuilder<M, R, S, A> {
-        builder.interceptor(MemoryShardInterceptor::<M, S, A>::new(memory_dir()))
+    fn take_tools(&mut self) -> Vec<DynTool> {
+        vec![
+            Box::new(RecallMemoryShardTool::new(self.memory_dir.clone())),
+            Box::new(GenerateMemoryShardTool::new(self.memory_dir.clone())),
+            Box::new(ModifyMemoryShardTool::new(self.memory_dir.clone())),
+        ]
+    }
+
+    fn take_interceptors(&mut self) -> Vec<DynInterceptor<S, M, A>> {
+        vec![Box::new(MemoryShardInterceptor::<M, S, A>::new(
+            self.memory_dir.clone(),
+        ))]
     }
 }
 
-pub fn plugin_memory_shard() -> MemoryShardPlugin {
-    MemoryShardPlugin
-}
+// ---------------------------------------------------------------------------
+// MemoryShardInterceptor
+// ---------------------------------------------------------------------------
 
 struct MemoryShardInterceptor<M, S, A> {
     shards_dir: PathBuf,
@@ -104,9 +134,8 @@ where
     S: Send + Sync + 'static,
     A: Default + Send + Sync + 'static,
 {
-    async fn before_solve(&mut self, _state: &mut S, cx: &mut Context<M, A>) -> InterceptorFlow {
+    async fn before_evaluate(&mut self, _state: &mut S, cx: &mut Context<M, A>) -> InterceptorFlow {
         if last_user_text(cx).is_none() {
-            // 还没有用户消息时不注入目录。
             return InterceptorFlow::Continue;
         }
 
@@ -139,6 +168,10 @@ where
     }
 }
 
+// ---------------------------------------------------------------------------
+// tests
+// ---------------------------------------------------------------------------
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -162,14 +195,13 @@ mod tests {
                 .into()])
                 .build();
 
-        interceptor.before_solve(&mut state, &mut cx).await;
+        interceptor.before_evaluate(&mut state, &mut cx).await;
 
         assert!(
             cx.message_count() >= 2,
             "应该在用户消息前注入至少一条记忆分片目录消息"
         );
 
-        // 注入消息应该位于倒数第二条，真实用户消息仍然位于最后。
         let injected_idx = cx.message_count() - 2;
         match cx.annotated_messages()[injected_idx].message.message_ref() {
             MessageRef::User { content } => {
@@ -182,7 +214,6 @@ mod tests {
             other => panic!("注入消息应该是用户消息类型，实际为：{:?}", other),
         }
 
-        // 最后一条消息应该仍然是原始用户消息。
         match cx
             .annotated_messages()
             .last()
@@ -205,7 +236,7 @@ mod tests {
         let mut state = ();
         let mut cx = ContextBuilder::<ChatCompletionMessageParam>::new("test-model").build();
 
-        interceptor.before_solve(&mut state, &mut cx).await;
+        interceptor.before_evaluate(&mut state, &mut cx).await;
 
         assert_eq!(cx.message_count(), 0, "上下文为空时不应该注入消息");
     }

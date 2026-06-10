@@ -7,8 +7,9 @@ mod tool;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use plugin::inspiration::plugin_inspiration;
-use plugin::memory_shard::plugin_memory_shard;
+use crate::ai::agent::plugin::embedded_local::memory_shard::memory_shard_plugin;
+use plugin::inspiration::InspirationCompact;
+use plugin::inspiration::inspiration_plugin;
 use state::BotAgentState;
 use state::BotMessageAnnotation;
 use tool::build_tools;
@@ -18,8 +19,8 @@ use crate::ai::agent_impl::deepseek::DeepSeekAgent;
 use crate::ai::agent_impl::deepseek::DeepSeekAgentBuilder;
 use crate::ai::resolver::context::ContextBuilder;
 use crate::ai::resolver::message::MessageOwned;
-use crate::ai::resolver_impl::deepseek::data_object::DeepSeekMessage;
 use crate::ai::resolver_impl::deepseek::DeepSeekResolver;
+use crate::ai::resolver_impl::deepseek::data_object::DeepSeekMessage;
 use crate::bot::agent::prompt::system_prompt;
 use crate::bot::message::ChannelMessage;
 
@@ -47,7 +48,6 @@ impl BotAgent {
 
         let tools = build_tools().await;
         let remote_proxy = RemoteProxy::from_local_config().await.ok();
-        let inspiration_plugin = plugin_inspiration(memory_dir())?;
 
         let context = ContextBuilder::<DeepSeekMessage, BotMessageAnnotation>::new(MODEL_NAME)
             .messages(vec![
@@ -62,8 +62,13 @@ impl BotAgent {
             DeepSeekAgentBuilder::new_with_state(BotAgentState::default(), context, resolver)
                 .tools(tools)
                 .remote_proxy(remote_proxy)
-                .plugin(inspiration_plugin)
-                .plugin(plugin_memory_shard())
+                .compact(InspirationCompact::<
+                    DeepSeekMessage,
+                    BotAgentState,
+                    BotMessageAnnotation,
+                >::default())
+                .plugin(inspiration_plugin(memory_dir())?)
+                .plugin(memory_shard_plugin(memory_dir()))
                 .build();
 
         Ok(Self {
@@ -93,7 +98,7 @@ impl BotAgent {
         }
         .into();
 
-        self.agent.solve(user_message).await
+        self.agent.evaluate(user_message).await
     }
 }
 
