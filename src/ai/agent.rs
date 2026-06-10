@@ -7,6 +7,7 @@ use crate::ai::agent::interceptor::IInterceptor;
 use crate::ai::agent::interceptor::InterceptorFlow;
 use crate::ai::agent::interceptor::InterceptorRegistry;
 use crate::ai::agent::interceptor::ToolInterceptorFlow;
+use crate::ai::agent::plugin::IAgentPlugin;
 use crate::ai::agent::tool::DynTool;
 use crate::ai::agent::tool::remote::RemoteProxy;
 use crate::ai::agent::tool::result::CallOutput;
@@ -21,6 +22,7 @@ use crate::ai::resolver::tool::IToolCall;
 
 pub mod compact;
 pub mod interceptor;
+pub mod plugin;
 pub mod tool;
 
 enum SolveFlow<T> {
@@ -405,16 +407,6 @@ where
     interceptors: Vec<DynInterceptor<S, M, A>>,
 }
 
-pub trait IAgentPlugin<M, R, S, A>
-where
-    S: Send + Sync + 'static,
-    M: IMessage + Send + Sync + 'static,
-    R: IResolver<Message = M> + Send,
-    A: Default + Send + Sync + 'static,
-{
-    fn apply(&self, builder: AgentBuilder<M, R, S, A>) -> AgentBuilder<M, R, S, A>;
-}
-
 impl<M, R, S, A> AgentBuilder<M, R, S, A>
 where
     S: Default + Send + Sync + 'static,
@@ -483,11 +475,14 @@ where
         agent
     }
 
-    pub fn plugin<P>(self, plugin: P) -> Self
+    pub fn plugin<P>(self, mut plugin: P) -> Self
     where
         P: IAgentPlugin<M, R, S, A>,
     {
-        plugin.apply(self)
+        self.tools(plugin.take_tools());
+        self.interceptor(plugin.take_interceptors());
+
+        self
     }
 }
 

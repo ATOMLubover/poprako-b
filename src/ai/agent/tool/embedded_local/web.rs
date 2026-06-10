@@ -195,7 +195,7 @@ fn format_results(results: &[TavilyResult]) -> String {
 
 // ---- WebFetchTool ---------------------------------------------------------
 
-const DEFAULT_MAX_BYTES: usize = 10_000;
+const DEFAULT_MAX_BYTES: usize = 64 * 1024; // 64 KB
 const MAX_REDIRECTS: usize = 5;
 
 pub struct WebFetchTool {
@@ -242,26 +242,17 @@ impl WebFetchTool {
     }
 
     async fn fetch_url(&self, url: &str, max_bytes: usize) -> Result<String, ExecutionError> {
-        let response = self
-            .client
-            .get(url)
-            .send()
-            .await
-            .map_err(|e| {
-                if e.is_timeout() {
-                    ExecutionError::exec_fail(format!("Request timed out: {url}"))
-                } else if e.is_redirect() {
-                    ExecutionError::exec_fail(format!(
-                        "Too many redirects fetching {url}"
-                    ))
-                } else if e.is_connect() {
-                    ExecutionError::exec_fail(format!(
-                        "Connection failed: {url} — {e}"
-                    ))
-                } else {
-                    ExecutionError::exec_fail(format!("Request failed: {url} — {e}"))
-                }
-            })?;
+        let response = self.client.get(url).send().await.map_err(|e| {
+            if e.is_timeout() {
+                ExecutionError::exec_fail(format!("Request timed out: {url}"))
+            } else if e.is_redirect() {
+                ExecutionError::exec_fail(format!("Too many redirects fetching {url}"))
+            } else if e.is_connect() {
+                ExecutionError::exec_fail(format!("Connection failed: {url} — {e}"))
+            } else {
+                ExecutionError::exec_fail(format!("Request failed: {url} — {e}"))
+            }
+        })?;
 
         let status = response.status();
         if !status.is_success() {
@@ -273,14 +264,15 @@ impl WebFetchTool {
         }
 
         let body = response.text().await.map_err(|e| {
-            ExecutionError::exec_fail(format!(
-                "Failed to read response body from {url}: {e}"
-            ))
+            ExecutionError::exec_fail(format!("Failed to read response body from {url}: {e}"))
         })?;
 
         let truncated: String = body.chars().take(max_bytes).collect();
-        let info = if body.chars().count() > max_bytes {
-            format!("\n\n[Response truncated to {max_bytes} bytes; total was {} bytes]", body.len())
+        let info = if body.len() > max_bytes {
+            format!(
+                "\n\n[Response truncated to {max_bytes} bytes; total was {} bytes]",
+                body.len()
+            )
         } else {
             String::new()
         };
@@ -391,19 +383,18 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn web_fetch_max_bytes_clamped_includes_full_page() {
+    async fn web_fetch_max_bytes_truncates() {
         let mut tool = WebFetchTool::new();
-        // max_bytes of 100 is clamped to minimum 1,000; example.com is ~600 chars,
-        // so the full page should be returned without truncation.
+        // Fetch with a very small max_bytes to force truncation.
         let result = tool
-            .execute(r#"{"url":"https://example.com","max_bytes":100}"#)
+            .execute(r#"{"url":"https://example.com","max_bytes":1000}"#)
             .await;
 
         assert!(result.is_ok(), "fetch should succeed: {:?}", result);
         let output = result.unwrap();
         assert!(
-            output.contains("Example Domain"),
-            "clamped max_bytes should still return full content, got: {output}"
+            output.contains("[Response truncated to 1000 bytes"),
+            "truncated response should have a note, got: {output}"
         );
     }
 
@@ -412,7 +403,10 @@ mod tests {
         // max_bytes < 1000 should be clamped to 1000 at parse time.
         let (_url, max_bytes) =
             WebFetchTool::parse_args(r#"{"url":"https://example.com","max_bytes":50}"#).unwrap();
-        assert_eq!(max_bytes, 1_000, "max_bytes should be clamped to minimum 1000");
+        assert_eq!(
+            max_bytes, 1_000,
+            "max_bytes should be clamped to minimum 1000"
+        );
     }
 
     #[tokio::test]
@@ -450,7 +444,7 @@ mod tests {
     // ---- WebSearchTool tests ----
 
     #[test]
-    fn tool_definition_is_correct() {
+    fn web_search_tool_definition_is_correct() {
         let tool = WebSearchTool {
             api_key: "test-key".into(),
             client: Client::new(),
@@ -558,29 +552,21 @@ mod tests {
 mod web_fetch_integration_tests {
     use super::*;
 
+    /// Run with: cargo test web_fetch::web_fetch_integration_tests -- --nocapture
+    ///
     /// Requires network access. Fetches a real page and verifies the content.
     #[tokio::test]
-    async fn fetch_example_domain() {
+    async fn fetch_httpbin_ip() {
         let mut tool = WebFetchTool::new();
-
-        // example.com is a well-known reliable test domain.
         let result = tool
-            .execute(r#"{"url":"https://example.com","max_bytes":3000}"#)
+            .execute(r#"{"url":"https://httpbin.org/get","max_bytes":3000}"#)
             .await;
 
-        // Skip if network is unavailable.
-        if let Err(ExecutionError::ExecFail { message }) = &result {
-            if message.contains("Connection failed") {
-                eprintln!("no network, skipping integration test");
-                return;
-            }
-        }
-
-        assert!(result.is_ok(), "example.com should be reachable: {:?}", result);
+        assert!(result.is_ok(), "httpbin should be reachable: {:?}", result);
         let output = result.unwrap();
         assert!(
-            output.contains("Example Domain"),
-            "response should contain 'Example Domain', got: {output}"
+            output.contains("\"url\""),
+            "response should contain 'url' field"
         );
     }
 }
