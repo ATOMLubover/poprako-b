@@ -104,8 +104,8 @@ impl BotAgent {
             .begin_solve(SolveKind::ReviewFollowup, event.respond_id.clone());
 
         let content = format!(
-            "[review_feedback]\nrespond_id: {}\ntarget_summary: {}\nfeedback: {}\n\n请只针对 respond_id 对应回答补充遗漏或修正错误，不要完整重答。",
-            event.respond_id, event.target_summary, event.feedback
+            "[channel_id: {}, type: review_feedback, respond_id: {}, target_summary: {}]\n{}",
+            event.channel_id, event.respond_id, event.target_summary, event.feedback
         );
         let user_message = MessageOwned::User { content }.into();
 

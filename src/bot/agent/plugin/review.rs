@@ -22,11 +22,15 @@ impl IAgentPlugin<DeepSeekMessage, DeepSeekResolver, BotAgentState, BotMessageAn
     fn system_prompt(&self) -> Option<SystemPromptSubSection> {
         Some(SystemPromptSubSection::new(
             "潜意识审视".to_string(),
-            "用户消息 envelope 中的 respond_id 标识一次主回答。\
-             你的潜意识层会在后台审视每一轮回答，如果发现遗漏或错误，\
-             会以 review_feedback 形式提醒你。\
-             收到反馈后，必须引用 feedback 指定 respond_id 对应的原回答，\
-             只补充遗漏或修正错误，不要完整重答。"
+            "用户消息的 envelope 头部包含 respond_id、channel_id 等上下文信息。\n\
+             \n\
+             当收到 type 为 review_feedback 的消息时，这是你的潜意识层发现上一轮回答存在遗漏或错误，\
+             发回的审后反馈。\n\
+             \n\
+             反馈的具体内容在消息体中。\
+             envelope 中的 respond_id 标识被审视的原回答，target_summary 是原问题的简要概括。\n\
+             \n\
+             收到 review_feedback 后，只针对对应回答补充遗漏或修正错误，不要完整重答。"
                 .to_string(),
         ))
     }
