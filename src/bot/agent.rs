@@ -76,7 +76,7 @@ impl BotAgent {
             .set_system_message(MessageOwned::System { content }.into());
     }
 
-    pub async fn try_answer(&mut self, message: ChannelMessage, content: String) -> Option<String> {
+    pub async fn respond(&mut self, message: ChannelMessage, content: String) -> Option<String> {
         let user_message = MessageOwned::User {
             // TODO: use actual sender_prks_id instead of "-"
             content: prompt_text(message, content, "-"),

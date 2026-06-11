@@ -106,7 +106,7 @@
 
 ## 代码层
 
-### 数据对象 (`src/ai/agent/persist/data_object.rs`)
+### 数据对象 (`src/ai/session/persist/data_object.rs`)
 
 - `Session`：`forked_from_checkpoint_id` 替代 `parent_session_id` + `parent_checkpoint_id`。
 - `Checkpoint`：纯元数据，不包含 `snapshot`。新增 `base_checkpoint_id`。
@@ -114,7 +114,7 @@
 - `CheckpointContext`：`{ checkpoint: Checkpoint, snapshot: ContextSnapshot }`——加载 checkpoint 上下文时的返回类型。
 - `hash_message(&Message) -> Vec<u8>`：SHA-256 哈希工具。
 
-### 存储接口 (`src/ai/agent/persist/storage.rs`)
+### 存储接口 (`src/ai/session/persist/storage.rs`)
 
 ```rust
 async fn create_checkpoint(&self, input: NewCheckpoint) -> anyhow::Result<Checkpoint>;

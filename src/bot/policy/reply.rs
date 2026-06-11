@@ -1,7 +1,7 @@
 use crate::bot::message::BotCommand;
 use crate::bot::message::ReplyTarget;
 
-pub fn split_reply_text(
+pub fn split_reply_to_command(
     reply_target: ReplyTarget,
     channel_id: String,
     text: String,
@@ -31,7 +31,8 @@ mod tests {
             message_id: "1".to_string(),
         };
 
-        let commands = split_reply_text(target.clone(), "200".to_string(), "a\n\nb".to_string());
+        let commands =
+            split_reply_to_command(target.clone(), "200".to_string(), "a\n\nb".to_string());
 
         assert_eq!(
             commands,

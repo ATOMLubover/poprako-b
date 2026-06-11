@@ -6,7 +6,7 @@ use crate::bot::message::ImageData;
 use crate::bot::message::MessageContent;
 use crate::bot::message::MessagePart;
 use crate::bot::policy::repeat::try_repeat;
-use crate::bot::policy::reply::split_reply_text;
+use crate::bot::policy::reply::split_reply_to_command;
 use crate::bot::policy::trigger::extract_user_text;
 use crate::bot::scheduled_task::ScheduledSpamTrigger;
 use crate::bot::state::BotState;
@@ -57,10 +57,10 @@ impl BotApp {
             return vec![BotCommand::channel_text(msg.channel_id.clone(), text)];
         }
 
-        self.bot_answer(msg).await
+        self.agent_respond(msg).await
     }
 
-    async fn bot_answer(&mut self, msg: ChannelMessage) -> Vec<BotCommand> {
+    async fn agent_respond(&mut self, msg: ChannelMessage) -> Vec<BotCommand> {
         let user_text = match extract_user_text(&msg) {
             Some(text) => text,
             None => return Vec::new(),
@@ -78,11 +78,11 @@ impl BotApp {
         let text = self
             .state
             .agent_mut()
-            .try_answer(msg, user_text)
+            .respond(msg, user_text)
             .await
             .unwrap_or_else(|| "X﹏X 白杨子可能出现了点问题，无法回答这个问题哦".to_string());
 
-        split_reply_text(reply_target, channel_id, text)
+        split_reply_to_command(reply_target, channel_id, text)
     }
 
     fn handle_system_prompt_refresh(&mut self, content: String) -> Vec<BotCommand> {
