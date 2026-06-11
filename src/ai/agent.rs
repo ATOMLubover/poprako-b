@@ -1,29 +1,30 @@
-use std::collections::HashMap;
-use std::collections::HashSet;
-
-use crate::ai::agent::compact::{DynCompact, ICompact};
-use crate::ai::agent::interceptor::DynInterceptor;
-use crate::ai::agent::interceptor::IInterceptor;
-use crate::ai::agent::interceptor::InterceptorFlow;
-use crate::ai::agent::interceptor::InterceptorRegistry;
-use crate::ai::agent::interceptor::ToolInterceptorFlow;
-use crate::ai::agent::tool::DynTool;
-use crate::ai::agent::tool::remote::RemoteProxy;
-use crate::ai::agent::tool::result::CallOutput;
-use crate::ai::agent::tool::result::CallResult;
-use crate::ai::agent::tool::result::ExecutionError;
-use crate::ai::resolver::IResolver;
-use crate::ai::resolver::action::Action;
-use crate::ai::resolver::action::Reason;
-use crate::ai::resolver::context::Context;
-use crate::ai::resolver::message::{IMessage, MessageRef};
-use crate::ai::resolver::tool::IToolCall;
-
 pub mod compact;
 pub mod interceptor;
+pub mod plugin;
+pub mod prompt;
 pub mod tool;
 
-enum SolveFlow<T> {
+use std::collections::{HashMap, HashSet};
+
+use crate::ai::agent::compact::{DynCompact, ICompact};
+use crate::ai::agent::interceptor::{
+    DynInterceptor, IInterceptor, InterceptorFlow, InterceptorRegistry, ToolInterceptorFlow,
+};
+use crate::ai::agent::prompt::{
+    SectionContent, SystemPrompt, SystemPromptSection, SystemPromptSubSection,
+};
+use crate::ai::agent::tool::DynTool;
+use crate::ai::agent::tool::remote::RemoteProxy;
+use crate::ai::agent::tool::result::{CallOutput, CallResult, ExecutionError};
+use crate::ai::resolver::IResolver;
+use crate::ai::resolver::action::{Action, Reason};
+use crate::ai::resolver::context::{AnnotatedMessage, Context};
+use crate::ai::resolver::message::{IMessage, MessageOwned, MessageRef};
+use crate::ai::resolver::tool::IToolCall;
+
+pub use plugin::IAgentPlugin;
+
+enum EvaluateFlow<T> {
     Continue(T),
     Finish(Option<String>),
 }
@@ -122,20 +123,20 @@ where
 
     /// Run the agent loop. Returns the final assistant text response, or `None`
     /// if the resolver failed before producing a final answer.
-    pub async fn solve(&mut self, message: M) -> Option<String> {
+    pub async fn evaluate(&mut self, message: M) -> Option<String> {
         self.context.push_message(message);
         self.compact().await;
 
-        if let SolveFlow::Finish(output) = self.run_before_solve().await {
-            return self.finish_solve(output).await;
+        if let EvaluateFlow::Finish(output) = self.run_before_evaluate().await {
+            return self.finish_evaluate(output).await;
         }
 
         let mut loop_index = 0;
 
         loop {
-            match self.solve_loop(loop_index).await {
-                SolveFlow::Continue(()) => loop_index += 1,
-                SolveFlow::Finish(output) => return self.finish_solve(output).await,
+            match self.try_evaluate(loop_index).await {
+                EvaluateFlow::Continue(()) => loop_index += 1,
+                EvaluateFlow::Finish(output) => return self.finish_evaluate(output).await,
             }
         }
     }
@@ -164,38 +165,38 @@ where
         )))
     }
 
-    async fn run_before_solve(&mut self) -> SolveFlow<()> {
+    async fn run_before_evaluate(&mut self) -> EvaluateFlow<()> {
         Self::interceptor_flow(
             self.interceptor_registry
-                .before_solve(&mut self.state, &mut self.context)
+                .before_evaluate(&mut self.state, &mut self.context)
                 .await,
         )
     }
 
-    async fn solve_loop(&mut self, loop_index: usize) -> SolveFlow<()> {
-        if let SolveFlow::Finish(output) = self.run_before_loop(loop_index).await {
-            return SolveFlow::Finish(output);
+    async fn try_evaluate(&mut self, loop_index: usize) -> EvaluateFlow<()> {
+        if let EvaluateFlow::Finish(output) = self.run_before_loop(loop_index).await {
+            return EvaluateFlow::Finish(output);
         }
 
         let mut action = match self.resolve_action().await {
-            SolveFlow::Continue(action) => action,
-            SolveFlow::Finish(output) => return SolveFlow::Finish(output),
+            EvaluateFlow::Continue(action) => action,
+            EvaluateFlow::Finish(output) => return EvaluateFlow::Finish(output),
         };
 
-        if let SolveFlow::Finish(output) = self.run_after_resolve(&mut action).await {
-            return SolveFlow::Finish(output);
+        if let EvaluateFlow::Finish(output) = self.run_after_resolve(&mut action).await {
+            return EvaluateFlow::Finish(output);
         }
 
         let mut tool_messages = match self.build_tool_messages(&action).await {
-            SolveFlow::Continue(messages) => messages,
-            SolveFlow::Finish(output) => return SolveFlow::Finish(output),
+            EvaluateFlow::Continue(messages) => messages,
+            EvaluateFlow::Finish(output) => return EvaluateFlow::Finish(output),
         };
 
-        if let SolveFlow::Finish(output) = self
+        if let EvaluateFlow::Finish(output) = self
             .run_before_commit_messages(&mut action, &mut tool_messages)
             .await
         {
-            return SolveFlow::Finish(output);
+            return EvaluateFlow::Finish(output);
         }
 
         let reason = action.reason.clone();
@@ -203,25 +204,25 @@ where
 
         self.commit_messages(action, tool_messages);
 
-        if let SolveFlow::Finish(output) = self.run_after_loop(loop_index).await {
-            return SolveFlow::Finish(output);
+        if let EvaluateFlow::Finish(output) = self.run_after_loop(loop_index).await {
+            return EvaluateFlow::Finish(output);
         }
 
         match reason {
-            Reason::Finish => SolveFlow::Finish(finish_content),
+            Reason::Finish => EvaluateFlow::Finish(finish_content),
             // FIXME: ToolCall, Length, Unknown -> continue the loop.
-            _ => SolveFlow::Continue(()),
+            _ => EvaluateFlow::Continue(()),
         }
     }
 
-    async fn run_before_loop(&mut self, loop_index: usize) -> SolveFlow<()> {
+    async fn run_before_loop(&mut self, loop_index: usize) -> EvaluateFlow<()> {
         let flow = self
             .interceptor_registry
             .before_loop(&mut self.state, &mut self.context, loop_index)
             .await;
 
-        if let SolveFlow::Finish(output) = Self::interceptor_flow(flow) {
-            return SolveFlow::Finish(output);
+        if let EvaluateFlow::Finish(output) = Self::interceptor_flow(flow) {
+            return EvaluateFlow::Finish(output);
         }
 
         Self::interceptor_flow(
@@ -231,20 +232,20 @@ where
         )
     }
 
-    async fn resolve_action(&mut self) -> SolveFlow<Action<M::ToolCall>> {
+    async fn resolve_action(&mut self) -> EvaluateFlow<Action<M::ToolCall>> {
         match self.resolver.resolve(&self.context).await {
             Ok(action) => {
-                tracing::info!("resolver produced action: {:?}", action);
-                SolveFlow::Continue(action)
+                tracing::debug!("resolver produced action: {:?}", action);
+                EvaluateFlow::Continue(action)
             }
             Err(e) => {
                 tracing::error!("resolve failed: {:?}", e);
-                SolveFlow::Finish(None)
+                EvaluateFlow::Finish(None)
             }
         }
     }
 
-    async fn run_after_resolve(&mut self, action: &mut Action<M::ToolCall>) -> SolveFlow<()> {
+    async fn run_after_resolve(&mut self, action: &mut Action<M::ToolCall>) -> EvaluateFlow<()> {
         Self::interceptor_flow(
             self.interceptor_registry
                 .after_resolve(&mut self.state, &mut self.context, action)
@@ -252,26 +253,29 @@ where
         )
     }
 
-    async fn build_tool_messages(&mut self, action: &Action<M::ToolCall>) -> SolveFlow<Vec<M>> {
+    async fn build_tool_messages(&mut self, action: &Action<M::ToolCall>) -> EvaluateFlow<Vec<M>> {
         let Some(calls) = &action.tool_calls else {
-            return SolveFlow::Continue(Vec::new());
+            return EvaluateFlow::Continue(Vec::new());
         };
 
         let mut messages = Vec::with_capacity(calls.len());
 
         for call in calls {
             let result = match self.call_tool_with_interceptors(call).await {
-                SolveFlow::Continue(result) => result,
-                SolveFlow::Finish(output) => return SolveFlow::Finish(output),
+                EvaluateFlow::Continue(result) => result,
+                EvaluateFlow::Finish(output) => return EvaluateFlow::Finish(output),
             };
 
             messages.push(Self::tool_message_from_result(call, &result));
         }
 
-        SolveFlow::Continue(messages)
+        EvaluateFlow::Continue(messages)
     }
 
-    async fn call_tool_with_interceptors(&mut self, call: &M::ToolCall) -> SolveFlow<CallResult> {
+    async fn call_tool_with_interceptors(
+        &mut self,
+        call: &M::ToolCall,
+    ) -> EvaluateFlow<CallResult> {
         let mut result = match self
             .interceptor_registry
             .before_tool_call(&mut self.state, &mut self.context, call)
@@ -281,7 +285,7 @@ where
             ToolInterceptorFlow::Skip { content } => {
                 Ok(CallOutput::new(call.id().to_string(), content))
             }
-            ToolInterceptorFlow::Stop { output } => return SolveFlow::Finish(output),
+            ToolInterceptorFlow::Stop { output } => return EvaluateFlow::Finish(output),
         };
 
         match self
@@ -289,8 +293,8 @@ where
             .after_tool_call(&mut self.state, &mut self.context, call, &mut result)
             .await
         {
-            InterceptorFlow::Continue => SolveFlow::Continue(result),
-            InterceptorFlow::Stop { output } => SolveFlow::Finish(output),
+            InterceptorFlow::Continue => EvaluateFlow::Continue(result),
+            InterceptorFlow::Stop { output } => EvaluateFlow::Finish(output),
         }
     }
 
@@ -314,7 +318,7 @@ where
         &mut self,
         action: &mut Action<M::ToolCall>,
         tool_messages: &mut Vec<M>,
-    ) -> SolveFlow<()> {
+    ) -> EvaluateFlow<()> {
         Self::interceptor_flow(
             self.interceptor_registry
                 .before_commit_messages(&mut self.state, &mut self.context, action, tool_messages)
@@ -338,7 +342,7 @@ where
         }
     }
 
-    async fn run_after_loop(&mut self, loop_index: usize) -> SolveFlow<()> {
+    async fn run_after_loop(&mut self, loop_index: usize) -> EvaluateFlow<()> {
         Self::interceptor_flow(
             self.interceptor_registry
                 .after_loop(&mut self.state, &mut self.context, loop_index)
@@ -346,17 +350,17 @@ where
         )
     }
 
-    fn interceptor_flow(flow: InterceptorFlow) -> SolveFlow<()> {
+    fn interceptor_flow(flow: InterceptorFlow) -> EvaluateFlow<()> {
         match flow {
-            InterceptorFlow::Continue => SolveFlow::Continue(()),
-            InterceptorFlow::Stop { output } => SolveFlow::Finish(output),
+            InterceptorFlow::Continue => EvaluateFlow::Continue(()),
+            InterceptorFlow::Stop { output } => EvaluateFlow::Finish(output),
         }
     }
 
-    async fn finish_solve(&mut self, mut output: Option<String>) -> Option<String> {
+    async fn finish_evaluate(&mut self, mut output: Option<String>) -> Option<String> {
         match self
             .interceptor_registry
-            .after_solve(&mut self.state, &mut self.context, &mut output)
+            .after_evaluate(&mut self.state, &mut self.context, &mut output)
             .await
         {
             InterceptorFlow::Continue => output,
@@ -389,6 +393,49 @@ where
     }
 }
 
+/// Build the rendered system prompt from base sections + plugin sub-sections
+/// and inject it as `messages[0]` in the context.  A no-op when there are no
+/// sections at all.
+fn inject_system_message<M, A>(
+    context: &mut Context<M, A>,
+    title: String,
+    mut sections: Vec<SystemPromptSection>,
+    mut plugin_subsections: Vec<SystemPromptSubSection>,
+) where
+    M: IMessage + Send + Sync + 'static,
+    A: Default + Send + Sync + 'static,
+{
+    if title.is_empty() && sections.is_empty() && plugin_subsections.is_empty() {
+        return;
+    }
+
+    if !plugin_subsections.is_empty() {
+        sections.push(SystemPromptSection::new(
+            "插件说明".into(),
+            SectionContent::SubSections(std::mem::take(&mut plugin_subsections)),
+        ));
+    }
+
+    let rendered = SystemPrompt::new(title, sections).render();
+    if rendered.is_empty() || rendered == "\n" {
+        return;
+    }
+
+    let system_message = M::from(MessageOwned::System { content: rendered });
+
+    let mut annotated = context.take_annotated_messages();
+    match annotated.first() {
+        Some(first) if matches!(first.message.message_ref(), MessageRef::System { .. }) => {
+            annotated[0] = AnnotatedMessage::new(system_message, A::default());
+        }
+        _ => {
+            annotated.insert(0, AnnotatedMessage::new(system_message, A::default()));
+        }
+    }
+
+    context.set_annotated_messages(annotated);
+}
+
 pub struct AgentBuilder<M, R, S = (), A = ()>
 where
     S: Send + Sync + 'static,
@@ -403,16 +450,10 @@ where
     remote_proxy: Option<RemoteProxy>,
     compact: Option<DynCompact<M, S, A>>,
     interceptors: Vec<DynInterceptor<S, M, A>>,
-}
-
-pub trait IAgentPlugin<M, R, S, A>
-where
-    S: Send + Sync + 'static,
-    M: IMessage + Send + Sync + 'static,
-    R: IResolver<Message = M> + Send,
-    A: Default + Send + Sync + 'static,
-{
-    fn apply(&self, builder: AgentBuilder<M, R, S, A>) -> AgentBuilder<M, R, S, A>;
+    prompt_title: Option<String>,
+    prompt_sections: Vec<SystemPromptSection>,
+    /// Plugin-contributed sub-sections, collected during `.plugin()` calls.
+    plugin_subsections: Vec<SystemPromptSubSection>,
 }
 
 impl<M, R, S, A> AgentBuilder<M, R, S, A>
@@ -443,12 +484,10 @@ where
             remote_proxy: None,
             compact: None,
             interceptors: Vec::new(),
+            prompt_title: None,
+            prompt_sections: Vec::new(),
+            plugin_subsections: Vec::new(),
         }
-    }
-
-    pub fn tools(mut self, tools: Vec<DynTool>) -> Self {
-        self.tools = tools;
-        self
     }
 
     pub fn compact<C>(mut self, compact: C) -> Self
@@ -464,15 +503,33 @@ where
         self
     }
 
-    pub fn interceptor<I>(mut self, interceptor: I) -> Self
-    where
-        I: IInterceptor<S, M, A> + 'static,
-    {
-        self.interceptors.push(Box::new(interceptor));
+    /// Only used when independent tools are needed.
+    pub fn append_tools(mut self, tools: Vec<DynTool>) -> Self {
+        self.tools.extend(tools);
         self
     }
 
-    pub fn build(self) -> Agent<M, R, S, A> {
+    /// Set the `#` title and `##`-level sections for the system prompt.
+    /// Plugin-contributed sub-sections will be appended under a `## 插件说明`
+    /// group during `build()`.
+    pub fn base_system_sections(
+        mut self,
+        title: String,
+        sections: Vec<SystemPromptSection>,
+    ) -> Self {
+        self.prompt_title = Some(title);
+        self.prompt_sections = sections;
+        self
+    }
+
+    pub fn build(mut self) -> Agent<M, R, S, A> {
+        inject_system_message(
+            &mut self.context,
+            self.prompt_title.take().unwrap_or_default(),
+            std::mem::take(&mut self.prompt_sections),
+            std::mem::take(&mut self.plugin_subsections),
+        );
+
         let mut agent = Agent::from_context(self.state, self.context, self.resolver);
 
         agent.compact = self.compact;
@@ -483,11 +540,16 @@ where
         agent
     }
 
-    pub fn plugin<P>(self, plugin: P) -> Self
+    pub fn plugin<P>(mut self, mut plugin: P) -> Self
     where
         P: IAgentPlugin<M, R, S, A>,
     {
-        plugin.apply(self)
+        self.tools.extend(plugin.tools());
+        self.interceptors.extend(plugin.interceptors());
+        if let Some(sub) = plugin.system_prompt() {
+            self.plugin_subsections.push(sub);
+        }
+        self
     }
 }
 
@@ -497,21 +559,69 @@ mod tests {
 
     use std::path::PathBuf;
     use std::sync::Arc;
-    use std::sync::atomic::AtomicUsize;
-    use std::sync::atomic::Ordering;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
-    use crate::ai::agent::compact::ICompact;
-    use crate::ai::agent::compact::SlidingWindowCompact;
+    use openai_oxide::types::chat::{
+        ChatCompletionMessageParam, ToolCall as OxToolCall, UserContent,
+    };
+
+    use crate::ai::agent::compact::{ICompact, SlidingWindowCompact};
     use crate::ai::agent::interceptor::InterceptorFlow;
-    use crate::ai::agent::tool::local::fs::{CreateFileTool, ReadFileTool};
-    use crate::ai::resolver::context::AnnotatedMessage;
-    use crate::ai::resolver::context::ContextBuilder;
+    use crate::ai::agent::tool::embedded_local::fs::{CreateFileTool, ReadFileTool};
+    use crate::ai::resolver::context::{AnnotatedMessage, ContextBuilder};
     use crate::ai::resolver::result::ResolveResult;
     use crate::ai::resolver_impl::openai::OpenAiResolver;
 
-    use openai_oxide::types::chat::ChatCompletionMessageParam;
-    use openai_oxide::types::chat::ToolCall as OxToolCall;
-    use openai_oxide::types::chat::UserContent;
+    /// Minimal plugin that holds tools and/or interceptors for testing.
+    struct TestPlugin<M, S, A>
+    where
+        M: IMessage + Send + Sync + 'static,
+        S: Send + Sync + 'static,
+        A: Default + Send + Sync + 'static,
+    {
+        tools: Vec<DynTool>,
+        interceptors: Vec<DynInterceptor<S, M, A>>,
+    }
+
+    impl<M, S, A> TestPlugin<M, S, A>
+    where
+        M: IMessage + Send + Sync + 'static,
+        S: Send + Sync + 'static,
+        A: Default + Send + Sync + 'static,
+    {
+        fn from_interceptor<I>(i: I) -> Self
+        where
+            I: IInterceptor<S, M, A> + 'static,
+        {
+            Self {
+                tools: Vec::new(),
+                interceptors: vec![Box::new(i)],
+            }
+        }
+
+        fn from_tools(tools: Vec<DynTool>) -> Self {
+            Self {
+                tools,
+                interceptors: Vec::new(),
+            }
+        }
+    }
+
+    impl<M, R, S, A> IAgentPlugin<M, R, S, A> for TestPlugin<M, S, A>
+    where
+        M: IMessage + Send + Sync + 'static,
+        R: IResolver<Message = M> + Send,
+        S: Send + Sync + 'static,
+        A: Default + Send + Sync + 'static,
+    {
+        fn tools(&mut self) -> Vec<DynTool> {
+            std::mem::take(&mut self.tools)
+        }
+
+        fn interceptors(&mut self) -> Vec<DynInterceptor<S, M, A>> {
+            std::mem::take(&mut self.interceptors)
+        }
+    }
 
     struct CountingResolver {
         calls: Arc<AtomicUsize>,
@@ -540,11 +650,11 @@ mod tests {
         }
     }
 
-    struct StopBeforeSolve;
+    struct StopBeforeEvaluate;
 
     #[async_trait::async_trait]
-    impl IInterceptor<(), ChatCompletionMessageParam, ()> for StopBeforeSolve {
-        async fn before_solve(
+    impl IInterceptor<(), ChatCompletionMessageParam, ()> for StopBeforeEvaluate {
+        async fn before_evaluate(
             &mut self,
             _state: &mut (),
             _cx: &mut Context<ChatCompletionMessageParam>,
@@ -569,7 +679,7 @@ mod tests {
             InterceptorFlow::Continue
         }
 
-        async fn after_solve(
+        async fn after_evaluate(
             &mut self,
             _state: &mut (),
             _cx: &mut Context<ChatCompletionMessageParam>,
@@ -582,26 +692,26 @@ mod tests {
 
     #[derive(Default)]
     struct TestState {
-        after_solve_count: usize,
+        after_evaluate_count: usize,
     }
 
-    struct CountAfterSolve;
+    struct CountAfterEvaluate;
 
     #[async_trait::async_trait]
-    impl IInterceptor<TestState, ChatCompletionMessageParam, ()> for CountAfterSolve {
-        async fn after_solve(
+    impl IInterceptor<TestState, ChatCompletionMessageParam, ()> for CountAfterEvaluate {
+        async fn after_evaluate(
             &mut self,
             state: &mut TestState,
             _cx: &mut Context<ChatCompletionMessageParam>,
             _output: &mut Option<String>,
         ) -> InterceptorFlow {
-            state.after_solve_count += 1;
+            state.after_evaluate_count += 1;
             InterceptorFlow::Continue
         }
     }
 
     #[tokio::test]
-    async fn before_solve_interceptor_can_stop_without_resolving() {
+    async fn before_evaluate_interceptor_can_stop_without_resolving() {
         let calls = Arc::new(AtomicUsize::new(0));
         let resolver = CountingResolver {
             calls: Arc::clone(&calls),
@@ -610,11 +720,11 @@ mod tests {
         let cx = ContextBuilder::new("test-model").build();
 
         let mut agent = AgentBuilder::<_, _, (), ()>::new(cx, resolver)
-            .interceptor(StopBeforeSolve)
+            .plugin(TestPlugin::from_interceptor(StopBeforeEvaluate))
             .build();
 
         let result = agent
-            .solve(ChatCompletionMessageParam::User {
+            .evaluate(ChatCompletionMessageParam::User {
                 content: UserContent::Text("test".to_string()),
                 name: None,
             })
@@ -634,11 +744,11 @@ mod tests {
         let cx = ContextBuilder::new("test-model").build();
 
         let mut agent = AgentBuilder::<_, _, (), ()>::new(cx, resolver)
-            .interceptor(RewriteOutput)
+            .plugin(TestPlugin::from_interceptor(RewriteOutput))
             .build();
 
         let result = agent
-            .solve(ChatCompletionMessageParam::User {
+            .evaluate(ChatCompletionMessageParam::User {
                 content: UserContent::Text("test".to_string()),
                 name: None,
             })
@@ -657,18 +767,18 @@ mod tests {
         let cx = ContextBuilder::new("test-model").build();
 
         let mut agent = AgentBuilder::new_with_state(TestState::default(), cx, resolver)
-            .interceptor(CountAfterSolve)
+            .plugin(TestPlugin::from_interceptor(CountAfterEvaluate))
             .build();
 
         let result = agent
-            .solve(ChatCompletionMessageParam::User {
+            .evaluate(ChatCompletionMessageParam::User {
                 content: UserContent::Text("test".to_string()),
                 name: None,
             })
             .await;
 
         assert_eq!(result.as_deref(), Some("done"));
-        assert_eq!(agent.state().after_solve_count, 1);
+        assert_eq!(agent.state().after_evaluate_count, 1);
     }
 
     #[tokio::test]
@@ -736,13 +846,13 @@ mod tests {
             .build();
 
         let mut agent = AgentBuilder::<_, _, (), ()>::new(cx, resolver)
-            .tools(vec![
+            .plugin(TestPlugin::from_tools(vec![
                 Box::new(CreateFileTool::new(output_dir.clone())),
                 Box::new(ReadFileTool::new(output_dir)),
-            ])
+            ]))
             .build();
 
-        let result = agent.solve(user_message).await;
+        let result = agent.evaluate(user_message).await;
         assert!(result.is_some(), "agent should return a final response");
         assert!(
             target_file.exists(),

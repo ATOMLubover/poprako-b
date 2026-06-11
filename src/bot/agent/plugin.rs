@@ -1,2 +1,3 @@
 pub mod inspiration;
-pub mod memory_shard;
+pub mod prks;
+pub mod review;

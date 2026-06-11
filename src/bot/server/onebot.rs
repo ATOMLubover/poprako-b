@@ -1,30 +1,111 @@
-use rand::Rng;
 use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Context as _;
-use onebot_v11::Event;
-use onebot_v11::MessageSegment;
-use onebot_v11::api::payload::ApiPayload;
-use onebot_v11::api::payload::SendGroupMsg;
-use onebot_v11::api::payload::SendPrivateMsg;
+use onebot_v11::{Event, MessageSegment};
+use onebot_v11::api::payload::{ApiPayload, SendGroupMsg, SendPrivateMsg};
 use onebot_v11::connect::ws_reverse::ReverseWsConnect;
-use onebot_v11::event::message::GroupMessage;
-use onebot_v11::event::message::Message as OneBotMessage;
-use time::OffsetDateTime;
-use time::UtcOffset;
+use onebot_v11::event::message::{GroupMessage, Message as OneBotMessage};
+use rand::Rng as _;
+use time::{OffsetDateTime, UtcOffset};
 use tokio::sync::broadcast::error::RecvError;
 
-use crate::bot::message::BotCommand;
-use crate::bot::message::ChannelMessage;
-use crate::bot::message::ImageData;
-use crate::bot::message::MessageActor;
-use crate::bot::message::MessageContent;
-use crate::bot::message::MessagePart;
-use crate::bot::message::ReplyTarget;
+use crate::bot::message::{BotCommand, ChannelMessage, ImageData, MessageActor, MessageContent, MessagePart, ReplyTarget};
 
 const FIRST_REPLY_DELAY_MS: std::ops::Range<u64> = 2000..5000;
 const BATCH_REPLY_DELAY_MS: std::ops::Range<u64> = 2000..3000;
+
+fn to_local_time(time: OffsetDateTime) -> OffsetDateTime {
+    let local_offset = UtcOffset::current_local_offset().unwrap_or(UtcOffset::UTC);
+    time.to_offset(local_offset)
+}
+
+fn current_local_time() -> OffsetDateTime {
+    let local_offset = UtcOffset::current_local_offset().unwrap_or(UtcOffset::UTC);
+    OffsetDateTime::now_utc().to_offset(local_offset)
+}
+
+fn part_from_segment(segment: MessageSegment) -> MessagePart {
+    match segment {
+        MessageSegment::Text { data } => MessagePart::Text(data.text),
+        MessageSegment::At { data } => MessagePart::Mention { actor_id: data.qq },
+        MessageSegment::Reply { data } => MessagePart::Reply {
+            message_id: data.id,
+        },
+        _ => MessagePart::Other,
+    }
+}
+
+fn content_from_segments(segments: Vec<MessageSegment>) -> MessageContent {
+    MessageContent {
+        parts: segments.into_iter().map(part_from_segment).collect(),
+    }
+}
+
+fn part_into_segment(part: MessagePart) -> Option<MessageSegment> {
+    match part {
+        MessagePart::Text(text) => Some(MessageSegment::text(text)),
+        MessagePart::Mention { actor_id } => Some(MessageSegment::at(actor_id)),
+        MessagePart::Reply { message_id } => Some(MessageSegment::reply(message_id)),
+        MessagePart::Image {
+            data: ImageData::Base64(image_base64),
+        } => Some(MessageSegment::easy_image(
+            format!("base64://{}", image_base64),
+            None::<String>,
+        )),
+        MessagePart::Other => None,
+    }
+}
+
+fn content_into_segments(content: MessageContent) -> Vec<MessageSegment> {
+    content
+        .parts
+        .into_iter()
+        .filter_map(part_into_segment)
+        .collect()
+}
+
+async fn sleep_random(range: std::ops::Range<u64>) {
+    let delay_ms = rand::thread_rng().gen_range(range);
+    tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+}
+
+fn receive_event(event: Result<Event, RecvError>) -> Option<Event> {
+    if let Err(error) = &event {
+        tracing::error!("failed to receive event: {}", error);
+        return None;
+    }
+
+    event.ok()
+}
+
+fn channel_message_from_onebot_message(message: GroupMessage) -> ChannelMessage {
+    ChannelMessage {
+        self_id: message.self_id.to_string(),
+        message_id: message.message_id.to_string(),
+        channel_id: message.group_id.to_string(),
+        actor: MessageActor {
+            id: message.user_id.to_string(),
+            nickname: message.sender.nickname.unwrap_or_default(),
+            channel_nickname: message.sender.card,
+        },
+        sent_at: OffsetDateTime::from_unix_timestamp(message.time)
+            .ok()
+            .map(to_local_time)
+            .unwrap_or_else(current_local_time),
+        raw_text: message.raw_message,
+        content: content_from_segments(message.message),
+    }
+}
+
+fn extract_channel_message(event: Event) -> Option<ChannelMessage> {
+    match event {
+        Event::Message(OneBotMessage::GroupMessage(message)) => {
+            Some(channel_message_from_onebot_message(message))
+        }
+        _ => None,
+    }
+}
 
 pub struct OneBotSender {
     connect: Arc<ReverseWsConnect>,
@@ -138,101 +219,10 @@ pub fn channel_message_from_event(event: Result<Event, RecvError>) -> Option<Cha
     receive_event(event).and_then(extract_channel_message)
 }
 
-fn receive_event(event: Result<Event, RecvError>) -> Option<Event> {
-    if let Err(error) = &event {
-        tracing::error!("failed to receive event: {}", error);
-        return None;
-    }
-
-    event.ok()
-}
-
-fn extract_channel_message(event: Event) -> Option<ChannelMessage> {
-    match event {
-        Event::Message(OneBotMessage::GroupMessage(message)) => {
-            Some(channel_message_from_onebot_message(message))
-        }
-        _ => None,
-    }
-}
-
-fn channel_message_from_onebot_message(message: GroupMessage) -> ChannelMessage {
-    ChannelMessage {
-        self_id: message.self_id.to_string(),
-        message_id: message.message_id.to_string(),
-        channel_id: message.group_id.to_string(),
-        actor: MessageActor {
-            id: message.user_id.to_string(),
-            nickname: message.sender.nickname.unwrap_or_default(),
-            channel_nickname: message.sender.card,
-        },
-        sent_at: OffsetDateTime::from_unix_timestamp(message.time)
-            .ok()
-            .map(to_local_time)
-            .unwrap_or_else(current_local_time),
-        raw_text: message.raw_message,
-        content: content_from_segments(message.message),
-    }
-}
-
-fn content_from_segments(segments: Vec<MessageSegment>) -> MessageContent {
-    MessageContent {
-        parts: segments.into_iter().map(part_from_segment).collect(),
-    }
-}
-
-fn part_from_segment(segment: MessageSegment) -> MessagePart {
-    match segment {
-        MessageSegment::Text { data } => MessagePart::Text(data.text),
-        MessageSegment::At { data } => MessagePart::Mention { actor_id: data.qq },
-        MessageSegment::Reply { data } => MessagePart::Reply {
-            message_id: data.id,
-        },
-        _ => MessagePart::Other,
-    }
-}
-
-fn content_into_segments(content: MessageContent) -> Vec<MessageSegment> {
-    content
-        .parts
-        .into_iter()
-        .filter_map(part_into_segment)
-        .collect()
-}
-
-fn part_into_segment(part: MessagePart) -> Option<MessageSegment> {
-    match part {
-        MessagePart::Text(text) => Some(MessageSegment::text(text)),
-        MessagePart::Mention { actor_id } => Some(MessageSegment::at(actor_id)),
-        MessagePart::Reply { message_id } => Some(MessageSegment::reply(message_id)),
-        MessagePart::Image {
-            data: ImageData::Base64(image_base64),
-        } => Some(MessageSegment::easy_image(
-            format!("base64://{}", image_base64),
-            None::<String>,
-        )),
-        MessagePart::Other => None,
-    }
-}
-
-fn to_local_time(time: OffsetDateTime) -> OffsetDateTime {
-    let local_offset = UtcOffset::current_local_offset().unwrap_or(UtcOffset::UTC);
-    time.to_offset(local_offset)
-}
-
-fn current_local_time() -> OffsetDateTime {
-    let local_offset = UtcOffset::current_local_offset().unwrap_or(UtcOffset::UTC);
-    OffsetDateTime::now_utc().to_offset(local_offset)
-}
-
-async fn sleep_random(range: std::ops::Range<u64>) {
-    let delay_ms = rand::thread_rng().gen_range(range);
-    tokio::time::sleep(Duration::from_millis(delay_ms)).await;
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
     use onebot_v11::event::message::GroupMessageSender;
 
     #[test]

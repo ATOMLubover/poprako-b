@@ -3,35 +3,25 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use anyhow::Context as _;
-use axum::Json;
-use axum::Router;
-use axum::extract::Path;
-use axum::extract::State;
+use axum::{Json, Router};
+use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use axum::routing::get;
-use axum::routing::post;
-use openai_oxide::types::chat::ChatCompletionMessageParam;
-use openai_oxide::types::chat::UserContent;
-use serde::Deserialize;
-use serde::Serialize;
+use axum::routing::{get, post};
+use openai_oxide::types::chat::{ChatCompletionMessageParam, UserContent};
+use serde::{Deserialize, Serialize};
 use tokio::net::TcpListener;
 use tokio::sync::Mutex;
 use tower_http::services::ServeDir;
 use uuid::Uuid;
 
-use crate::ai::agent_impl::openai::OpenAiAgent;
-use crate::ai::agent_impl::openai::OpenAiAgentBuilder;
+use crate::ai::agent_impl::openai::{OpenAiAgent, OpenAiAgentBuilder};
 use crate::ai::resolver_impl::openai::OpenAiResolver;
 use crate::ai::session::SessionManager;
-use crate::ai::session::persist::codec::IContextSnapshotCodec;
-use crate::ai::session::persist::codec::OpenAiCodec;
-use crate::ai::session::persist::data_object::Checkpoint;
-use crate::ai::session::persist::data_object::CheckpointKind;
-use crate::ai::session::persist::data_object::ContextSnapshot;
-use crate::ai::session::persist::data_object::Message;
-use crate::ai::session::persist::data_object::NewCheckpoint;
-use crate::ai::session::persist::data_object::Session;
+use crate::ai::session::persist::codec::{IContextSnapshotCodec, OpenAiCodec};
+use crate::ai::session::persist::data_object::{
+    Checkpoint, CheckpointKind, ContextSnapshot, Message, NewCheckpoint, Session,
+};
 use crate::ai::session::persist::storage::IStorage;
 use crate::ai::session::persist::storage::rdb::RdbStorage;
 
@@ -87,16 +77,16 @@ struct CheckoutRequest {
 }
 
 #[derive(Debug, Serialize)]
-struct SessionSummary {
-    session: Session,
-    latest_checkpoint: Option<CheckpointSummary>,
-}
-
-#[derive(Debug, Serialize)]
 struct CheckpointSummary {
     checkpoint: Checkpoint,
     message_count: usize,
     local_ref_count: i64,
+}
+
+#[derive(Debug, Serialize)]
+struct SessionSummary {
+    session: Session,
+    latest_checkpoint: Option<CheckpointSummary>,
 }
 
 #[derive(Debug, Serialize)]
@@ -145,50 +135,120 @@ struct PersistDebugResponse {
     checkpoint_local_ref_count: i64,
 }
 
-pub async fn run() -> anyhow::Result<()> {
-    dotenvy::dotenv().ok();
+fn initial_snapshot(model: &str) -> ContextSnapshot {
+    ContextSnapshot {
+        model: model.to_string(),
+        messages: vec![Message::System {
+            content: "You are a concise assistant in a local checkpoint persistence demo."
+                .to_string(),
+        }],
+    }
+}
 
-    let storage = RdbStorage::from_env().await?;
-    let model = std::env::var("CHATBOX_MODEL").unwrap_or_else(|_| "deepseek-v4-flash".to_string());
-    let addr = std::env::var("CHATBOX_ADDR")
-        .unwrap_or_else(|_| "127.0.0.1:3000".to_string())
-        .parse::<SocketAddr>()
-        .context("CHATBOX_ADDR must be a socket address")?;
+fn build_agent(snapshot: ContextSnapshot) -> anyhow::Result<OpenAiAgent> {
+    let context = OpenAiCodec.decode_context(&snapshot)?;
+    Ok(OpenAiAgentBuilder::new(context, OpenAiResolver::from_env()).build())
+}
 
-    let state = AppState {
-        manager: Arc::new(SessionManager::new_openai(storage)),
-        snapshots: Arc::new(Mutex::new(HashMap::new())),
-        model,
+async fn checkpoint_summary(
+    state: &AppState,
+    checkpoint: Checkpoint,
+) -> Result<CheckpointSummary, ApiError> {
+    let context = state
+        .manager
+        .load_checkpoint_context(checkpoint.id)
+        .await
+        .map_err(ApiError::internal)?;
+    let local_ref_count = state
+        .manager
+        .store()
+        .checkpoint_local_ref_count(checkpoint.id)
+        .await
+        .map_err(ApiError::internal)?;
+
+    Ok(CheckpointSummary {
+        checkpoint,
+        message_count: context.snapshot.messages.len(),
+        local_ref_count,
+    })
+}
+
+async fn latest_checkpoint_summary(
+    state: &AppState,
+    session_id: Uuid,
+) -> Result<Option<CheckpointSummary>, ApiError> {
+    let checkpoints = state
+        .manager
+        .list_checkpoints(session_id)
+        .await
+        .map_err(ApiError::internal)?;
+    match checkpoints.last().cloned() {
+        Some(checkpoint) => Ok(Some(checkpoint_summary(state, checkpoint).await?)),
+        None => Ok(None),
+    }
+}
+
+async fn persist_raw_checkpoint(
+    state: &AppState,
+    session_id: Uuid,
+    solution_id: Option<Uuid>,
+    kind: CheckpointKind,
+    snapshot: ContextSnapshot,
+) -> Result<CheckpointSummary, ApiError> {
+    let checkpoint = state
+        .manager
+        .store()
+        .create_checkpoint(NewCheckpoint {
+            session_id,
+            solution_id,
+            kind,
+            model: snapshot.model,
+            messages: snapshot.messages,
+        })
+        .await
+        .map_err(ApiError::internal)?;
+    checkpoint_summary(state, checkpoint).await
+}
+
+async fn snapshot_for_session(
+    state: &AppState,
+    session_id: Uuid,
+) -> Result<ContextSnapshot, ApiError> {
+    if let Some(snapshot) = state.snapshots.lock().await.get(&session_id).cloned() {
+        return Ok(snapshot);
+    }
+
+    let session = state
+        .manager
+        .store()
+        .get_session(session_id)
+        .await
+        .map_err(ApiError::internal)?;
+    let snapshot = match state
+        .manager
+        .list_checkpoints(session.id)
+        .await
+        .map_err(ApiError::internal)?
+        .last()
+        .cloned()
+    {
+        Some(checkpoint) => {
+            let context = state
+                .manager
+                .load_checkpoint_context(checkpoint.id)
+                .await
+                .map_err(ApiError::internal)?;
+            context.snapshot
+        }
+        None => initial_snapshot(session.model.as_str()),
     };
 
-    let static_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("chatbox_static");
-    let app = Router::new()
-        .route("/api/sessions", get(list_sessions).post(create_session))
-        .route("/api/sessions/{session_id}/messages", post(send_message))
-        .route(
-            "/api/sessions/{session_id}/checkpoints",
-            get(list_checkpoints),
-        )
-        .route(
-            "/api/sessions/{session_id}/checkout",
-            post(checkout_session),
-        )
-        .route(
-            "/api/checkpoints/{checkpoint_id}/context",
-            get(checkpoint_context),
-        )
-        .route(
-            "/api/checkpoints/{checkpoint_id}/fork",
-            post(fork_checkpoint),
-        )
-        .route("/api/debug/persist", get(debug_persist))
-        .fallback_service(ServeDir::new(static_dir).append_index_html_on_directories(true))
-        .with_state(state);
-
-    let listener = TcpListener::bind(addr).await?;
-    tracing::info!("chatbox listening on http://{}", addr);
-    axum::serve(listener, app).await?;
-    Ok(())
+    state
+        .snapshots
+        .lock()
+        .await
+        .insert(session_id, snapshot.clone());
+    Ok(snapshot)
 }
 
 async fn list_sessions(State(state): State<AppState>) -> ApiResult<Vec<SessionSummary>> {
@@ -221,7 +281,7 @@ async fn create_session(
         .await
         .map_err(ApiError::internal)?;
     let snapshot = initial_snapshot(state.model.as_str());
-    let checkpoint = create_raw_checkpoint(
+    let checkpoint = persist_raw_checkpoint(
         &state,
         session.id,
         None,
@@ -255,7 +315,7 @@ async fn send_message(
         .manager
         .encode_snapshot(&agent)
         .map_err(ApiError::internal)?;
-    let before = create_raw_checkpoint(
+    let before = persist_raw_checkpoint(
         &state,
         session_id,
         Some(Uuid::new_v4()),
@@ -268,14 +328,14 @@ async fn send_message(
         .solution_id
         .ok_or_else(|| ApiError::internal("before checkpoint did not create a solution id"))?;
     let assistant = agent
-        .solve(user_message)
+        .evaluate(user_message)
         .await
         .ok_or_else(|| ApiError::internal("LLM did not produce a final assistant response"))?;
     let after_snapshot = state
         .manager
         .encode_snapshot(&agent)
         .map_err(ApiError::internal)?;
-    let after = create_raw_checkpoint(
+    let after = persist_raw_checkpoint(
         &state,
         session_id,
         Some(solution_id),
@@ -297,7 +357,7 @@ async fn send_message(
     }))
 }
 
-async fn list_checkpoints(
+async fn list_session_checkpoints(
     State(state): State<AppState>,
     Path(session_id): Path<Uuid>,
 ) -> ApiResult<CheckpointListResponse> {
@@ -416,118 +476,50 @@ async fn debug_persist(State(state): State<AppState>) -> ApiResult<PersistDebugR
     }))
 }
 
-async fn snapshot_for_session(
-    state: &AppState,
-    session_id: Uuid,
-) -> Result<ContextSnapshot, ApiError> {
-    if let Some(snapshot) = state.snapshots.lock().await.get(&session_id).cloned() {
-        return Ok(snapshot);
-    }
+pub async fn run() -> anyhow::Result<()> {
+    dotenvy::dotenv().ok();
 
-    let session = state
-        .manager
-        .store()
-        .get_session(session_id)
-        .await
-        .map_err(ApiError::internal)?;
-    let snapshot = match state
-        .manager
-        .list_checkpoints(session.id)
-        .await
-        .map_err(ApiError::internal)?
-        .last()
-        .cloned()
-    {
-        Some(checkpoint) => {
-            let context = state
-                .manager
-                .load_checkpoint_context(checkpoint.id)
-                .await
-                .map_err(ApiError::internal)?;
-            context.snapshot
-        }
-        None => initial_snapshot(session.model.as_str()),
+    let storage = RdbStorage::from_env().await?;
+    let model = std::env::var("CHATBOX_MODEL").unwrap_or_else(|_| "deepseek-v4-flash".to_string());
+    let addr = std::env::var("CHATBOX_ADDR")
+        .unwrap_or_else(|_| "127.0.0.1:3000".to_string())
+        .parse::<SocketAddr>()
+        .context("CHATBOX_ADDR must be a socket address")?;
+
+    let state = AppState {
+        manager: Arc::new(SessionManager::new_openai(storage)),
+        snapshots: Arc::new(Mutex::new(HashMap::new())),
+        model,
     };
 
-    state
-        .snapshots
-        .lock()
-        .await
-        .insert(session_id, snapshot.clone());
-    Ok(snapshot)
-}
+    let static_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("chatbox_static");
+    let app = Router::new()
+        .route("/api/sessions", get(list_sessions).post(create_session))
+        .route("/api/sessions/{session_id}/messages", post(send_message))
+        .route(
+            "/api/sessions/{session_id}/checkpoints",
+            get(list_session_checkpoints),
+        )
+        .route(
+            "/api/sessions/{session_id}/checkout",
+            post(checkout_session),
+        )
+        .route(
+            "/api/checkpoints/{checkpoint_id}/context",
+            get(checkpoint_context),
+        )
+        .route(
+            "/api/checkpoints/{checkpoint_id}/fork",
+            post(fork_checkpoint),
+        )
+        .route("/api/debug/persist", get(debug_persist))
+        .fallback_service(ServeDir::new(static_dir).append_index_html_on_directories(true))
+        .with_state(state);
 
-async fn latest_checkpoint_summary(
-    state: &AppState,
-    session_id: Uuid,
-) -> Result<Option<CheckpointSummary>, ApiError> {
-    let checkpoints = state
-        .manager
-        .list_checkpoints(session_id)
-        .await
-        .map_err(ApiError::internal)?;
-    match checkpoints.last().cloned() {
-        Some(checkpoint) => Ok(Some(checkpoint_summary(state, checkpoint).await?)),
-        None => Ok(None),
-    }
-}
+    let listener = TcpListener::bind(addr).await?;
+    tracing::info!("chatbox listening on http://{}", addr);
 
-async fn checkpoint_summary(
-    state: &AppState,
-    checkpoint: Checkpoint,
-) -> Result<CheckpointSummary, ApiError> {
-    let context = state
-        .manager
-        .load_checkpoint_context(checkpoint.id)
-        .await
-        .map_err(ApiError::internal)?;
-    let local_ref_count = state
-        .manager
-        .store()
-        .checkpoint_local_ref_count(checkpoint.id)
-        .await
-        .map_err(ApiError::internal)?;
+    axum::serve(listener, app).await?;
 
-    Ok(CheckpointSummary {
-        checkpoint,
-        message_count: context.snapshot.messages.len(),
-        local_ref_count,
-    })
-}
-
-async fn create_raw_checkpoint(
-    state: &AppState,
-    session_id: Uuid,
-    solution_id: Option<Uuid>,
-    kind: CheckpointKind,
-    snapshot: ContextSnapshot,
-) -> Result<CheckpointSummary, ApiError> {
-    let checkpoint = state
-        .manager
-        .store()
-        .create_checkpoint(NewCheckpoint {
-            session_id,
-            solution_id,
-            kind,
-            model: snapshot.model,
-            messages: snapshot.messages,
-        })
-        .await
-        .map_err(ApiError::internal)?;
-    checkpoint_summary(state, checkpoint).await
-}
-
-fn initial_snapshot(model: &str) -> ContextSnapshot {
-    ContextSnapshot {
-        model: model.to_string(),
-        messages: vec![Message::System {
-            content: "You are a concise assistant in a local checkpoint persistence demo."
-                .to_string(),
-        }],
-    }
-}
-
-fn build_agent(snapshot: ContextSnapshot) -> anyhow::Result<OpenAiAgent> {
-    let context = OpenAiCodec.decode_context(&snapshot)?;
-    Ok(OpenAiAgentBuilder::new(context, OpenAiResolver::from_env()).build())
+    Ok(())
 }

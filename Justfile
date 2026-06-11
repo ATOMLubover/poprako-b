@@ -12,10 +12,10 @@
 # 	docker compose -f docker-compose.bak.yml down
 
 # ---- Host mode (docker-compose.host.yml) ----
-run-napcat-host:
+napcat-host-run:
 	docker compose -f docker-compose.host.yml up -d
 
-down-napcat-host:
+napcat-host-down:
 	docker compose -f docker-compose.host.yml down
 
 napcat-logs:
@@ -24,11 +24,26 @@ napcat-logs:
 # Run poprako-b directly on the host (uses .env).
 # Requires: napcat-up has been run and NapCat reverse WS
 # configured to point at ws://127.0.0.1:8081/onebot/v11.
-run-bot-host:
-	cargo run --release --bin poprako-b-preview
+bot-host-run:
+	mkdir -p logs
+	if [ -f .bot-host.pid ] && kill -0 "$(cat .bot-host.pid)" 2>/dev/null; then echo "bot is already running with pid $(cat .bot-host.pid)"; exit 1; fi
+	: > logs/bot-host-run.log
+	cargo build --release --bin poprako-b-preview >> logs/bot-host-run.log 2>&1
+	nohup target/release/poprako-b-preview >> logs/bot-host-run.log 2>&1 & echo $! > .bot-host.pid
+	echo "bot started with pid $(cat .bot-host.pid); logs: logs/bot-host-run.log"
 
-run-bot-host-debug:
-	RUST_LOG=debug cargo run
+bot-host-down:
+	if [ ! -f .bot-host.pid ]; then echo "bot is not running"; exit 0; fi
+	if kill -0 "$(cat .bot-host.pid)" 2>/dev/null; then kill "$(cat .bot-host.pid)"; else echo "bot pid $(cat .bot-host.pid) is not running"; fi
+	rm -f .bot-host.pid
 
-run-chatbox-server:
+bot-host-run-debug:
+	mkdir -p logs
+	if [ -f .bot-host.pid ] && kill -0 "$(cat .bot-host.pid)" 2>/dev/null; then echo "bot is already running with pid $(cat .bot-host.pid)"; exit 1; fi
+	: > logs/bot-host-run.log
+	cargo build --bin poprako-b-preview >> logs/bot-host-run.log 2>&1
+	nohup env RUST_LOG=debug target/debug/poprako-b-preview >> logs/bot-host-run.log 2>&1 & echo $! > .bot-host.pid
+	echo "bot started with pid $(cat .bot-host.pid); logs: logs/bot-host-run.log"
+
+chatbox-server-run:
     cargo run --bin chatbox

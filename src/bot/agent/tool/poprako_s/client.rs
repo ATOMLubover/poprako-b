@@ -1,5 +1,5 @@
-use serde::Deserialize;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use url::Url;
 
 use crate::bot::agent::data::{Assignment, Chapter, Comic, Member, Workset};
 use crate::http::HttpClient;
@@ -8,24 +8,30 @@ use crate::http::result::HttpError;
 pub struct PrksClient {
     auth_token: String,
     http_client: HttpClient,
+    base_url: Url,
 }
 
 impl PrksClient {
-    pub fn new(http_client: HttpClient, auth_token: String) -> Self {
+    pub fn new(http_client: HttpClient, base_url: Url, auth_token: String) -> Self {
         Self {
             auth_token,
             http_client,
+            base_url,
         }
     }
 
     pub async fn login(
         http_client: &HttpClient,
+        base_url: &Url,
         qid: &str,
         password: &str,
     ) -> Result<String, String> {
         let payload = LoginArgs { qid, password };
+        let url = base_url
+            .join("auth/login")
+            .map_err(|e| format!("invalid login URL: {e}"))?;
         let envelope: HttpRes<LoginRes> = http_client
-            .post_path("auth/login", &payload, &[], None)
+            .post(url, &payload, &[], None)
             .await
             .map_err(Self::map_http_error)?;
 
@@ -181,7 +187,7 @@ impl PrksClient {
             ("includes".to_string(), "chapter.comic.creator".to_string()),
         ];
 
-        self.get_enveloped(&format!("assignments/users/{}", user_id), &query)
+        self.get_enveloped(&format!("assignments/users/{user_id}"), &query)
             .await
     }
 
@@ -189,9 +195,13 @@ impl PrksClient {
     where
         T: serde::de::DeserializeOwned,
     {
+        let url = self
+            .base_url
+            .join(path)
+            .map_err(|e| format!("invalid request URL: {e}"))?;
         let envelope: HttpRes<T> = self
             .http_client
-            .get_path_with_query(path, query, Some(&self.auth_token))
+            .get_with_query(url, query, Some(&self.auth_token))
             .await
             .map_err(Self::map_http_error)?;
 
@@ -234,13 +244,14 @@ struct HttpRes<T> {
 
 #[cfg(test)]
 mod tests {
-    use std::io::{Read, Write};
+    use super::PrksClient;
+
+    use std::io::{Read as _, Write as _};
     use std::net::TcpListener;
     use std::thread;
 
     use url::Url;
 
-    use super::PrksClient;
     use crate::http::HttpClient;
 
     fn spawn_json_server<F>(assert_request: F, status_code: u16, body: String) -> String
@@ -336,8 +347,9 @@ mod tests {
             r#"{"code":200,"data":{"token":"tok-123"}}"#.to_string(),
         );
 
-        let http_client = HttpClient::new(Some(Url::parse(&base_url).expect("valid base url")));
-        let token = PrksClient::login(&http_client, "bot-qid", "bot-pass")
+        let http_client = HttpClient::new(None);
+        let url = Url::parse(&base_url).expect("valid base url");
+        let token = PrksClient::login(&http_client, &url, "bot-qid", "bot-pass")
             .await
             .expect("login should succeed");
 
@@ -352,8 +364,9 @@ mod tests {
             r#"{"code":400,"message":"bad credentials"}"#.to_string(),
         );
 
-        let http_client = HttpClient::new(Some(Url::parse(&base_url).expect("valid base url")));
-        let err = PrksClient::login(&http_client, "bot-qid", "bad-pass")
+        let http_client = HttpClient::new(None);
+        let url = Url::parse(&base_url).expect("valid base url");
+        let err = PrksClient::login(&http_client, &url, "bot-qid", "bad-pass")
             .await
             .expect_err("login should fail");
 
@@ -385,8 +398,9 @@ mod tests {
             r#"{"code":200,"data":[]}"#.to_string(),
         );
 
-        let http_client = HttpClient::new(Some(Url::parse(&base_url).expect("valid base url")));
-        let client = PrksClient::new(http_client, "auth-tok".to_string());
+        let http_client = HttpClient::new(None);
+        let url = Url::parse(&base_url).expect("valid base url");
+        let client = PrksClient::new(http_client, url, "auth-tok".to_string());
 
         let comics = client
             .list_workset_comics(

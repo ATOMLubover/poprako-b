@@ -1,6 +1,6 @@
-use rand::Rng;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use rand::Rng as _;
 use tokio::sync::mpsc;
 use tokio::time::sleep;
 
@@ -44,13 +44,6 @@ const KEEPALIVE_MESSAGES: &[&str] = &[
     "保持在线，随时响应",
 ];
 
-pub fn watch_keepalive() -> anyhow::Result<mpsc::Receiver<KeepaliveTrigger>> {
-    let (send, recv) = mpsc::channel(1);
-    tokio::spawn(keepalive_watchdog(send));
-
-    Ok(recv)
-}
-
 async fn keepalive_watchdog(send: mpsc::Sender<KeepaliveTrigger>) {
     loop {
         let interval_secs = rand::thread_rng().gen_range(120..=300);
@@ -75,4 +68,11 @@ async fn keepalive_watchdog(send: mpsc::Sender<KeepaliveTrigger>) {
             return;
         }
     }
+}
+
+pub fn watch_keepalive() -> anyhow::Result<mpsc::Receiver<KeepaliveTrigger>> {
+    let (send, recv) = mpsc::channel(1);
+    tokio::spawn(keepalive_watchdog(send));
+
+    Ok(recv)
 }

@@ -1,10 +1,15 @@
-use chrono::DateTime;
-use chrono::Utc;
-use serde::Deserialize;
-use serde::Serialize;
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 // ── Session ──────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Status {
+    Active,
+    Archived,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Session {
@@ -25,18 +30,50 @@ pub struct PersistDiagnostics {
     pub checkpoint_local_ref_count: i64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Status {
-    Active,
-    Archived,
-}
-
 #[derive(Debug, Clone)]
 pub struct NewSession {
     pub name: Option<String>,
     pub model: String,
     pub forked_from_checkpoint_id: Option<Uuid>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolCall {
+    pub id: String,
+    pub name: String,
+    pub args: String,
+}
+
+/// Codec-only message representation (the JSON form that is hashed and stored).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "role", rename_all = "snake_case")]
+pub enum Message {
+    System {
+        content: String,
+    },
+    User {
+        content: String,
+    },
+    Assistant {
+        content: Option<String>,
+        refusal: Option<String>,
+        tool_calls: Option<Vec<ToolCall>>,
+    },
+    Tool {
+        tool_call_id: String,
+        content: String,
+    },
+}
+
+impl Message {
+    pub fn role(&self) -> &'static str {
+        match self {
+            Message::System { .. } => "system",
+            Message::User { .. } => "user",
+            Message::Assistant { .. } => "assistant",
+            Message::Tool { .. } => "tool",
+        }
+    }
 }
 
 // ── Stored message (content atom) ────────────────────────────────────────────
@@ -55,8 +92,7 @@ pub struct StoredMessage {
 /// Compute the SHA-256 hash of a canonical JSON payload.
 /// Used for content-addressed deduplication of messages.
 pub fn hash_message(message: &Message) -> Vec<u8> {
-    use sha2::Digest;
-    use sha2::Sha256;
+    use sha2::{Digest as _, Sha256};
 
     let canonical = serde_json::to_vec(message).expect("message serialization should not fail");
     let mut hasher = Sha256::new();
@@ -65,6 +101,14 @@ pub fn hash_message(message: &Message) -> Vec<u8> {
 }
 
 // ── Checkpoint metadata ──────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CheckpointKind {
+    BeforeSolution,
+    AfterSolution,
+    Fork,
+}
 
 /// Lightweight checkpoint record.  Context reconstruction happens through
 /// `agent_checkpoint_messages` and the base chain.
@@ -96,14 +140,6 @@ pub struct NewCheckpoint {
     pub messages: Vec<Message>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum CheckpointKind {
-    BeforeSolution,
-    AfterSolution,
-    Fork,
-}
-
 // ── Context snapshot (codec boundary) ────────────────────────────────────────
 
 /// Full materialised context returned when loading a checkpoint.
@@ -112,45 +148,6 @@ pub enum CheckpointKind {
 pub struct ContextSnapshot {
     pub model: String,
     pub messages: Vec<Message>,
-}
-
-/// Codec-only message representation (the JSON form that is hashed and stored).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "role", rename_all = "snake_case")]
-pub enum Message {
-    System {
-        content: String,
-    },
-    User {
-        content: String,
-    },
-    Assistant {
-        content: Option<String>,
-        refusal: Option<String>,
-        tool_calls: Option<Vec<ToolCall>>,
-    },
-    Tool {
-        tool_call_id: String,
-        content: String,
-    },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ToolCall {
-    pub id: String,
-    pub name: String,
-    pub args: String,
-}
-
-impl Message {
-    pub fn role(&self) -> &'static str {
-        match self {
-            Message::System { .. } => "system",
-            Message::User { .. } => "user",
-            Message::Assistant { .. } => "assistant",
-            Message::Tool { .. } => "tool",
-        }
-    }
 }
 
 // ── Checkpoint context (storage return type) ─────────────────────────────────

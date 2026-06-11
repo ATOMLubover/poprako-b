@@ -21,13 +21,6 @@ pub enum ScheduledSpamTrigger {
     },
 }
 
-pub fn watch_scheduled_spam() -> anyhow::Result<mpsc::Receiver<ScheduledSpamTrigger>> {
-    let (send, recv) = mpsc::channel(1);
-    tokio::spawn(scheduled_spam_watchdog(send));
-
-    Ok(recv)
-}
-
 fn parse_spam_channels() -> Vec<String> {
     env::var("SPAM_CHANNELS")
         .unwrap_or_default()
@@ -126,4 +119,11 @@ async fn scheduled_spam_watchdog(send: mpsc::Sender<ScheduledSpamTrigger>) {
             return;
         }
     }
+}
+
+pub fn watch_scheduled_spam() -> anyhow::Result<mpsc::Receiver<ScheduledSpamTrigger>> {
+    let (send, recv) = mpsc::channel(1);
+    tokio::spawn(scheduled_spam_watchdog(send));
+
+    Ok(recv)
 }

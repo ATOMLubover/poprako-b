@@ -1,13 +1,9 @@
 use std::collections::HashMap;
 
-use serde::Deserialize;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use url::Url;
 
-use crate::ai::agent::tool::result::CallOutput;
-use crate::ai::agent::tool::result::CallResult;
-use crate::ai::agent::tool::result::ExecutionError;
-use crate::ai::agent::tool::result::ExecutionResult;
+use crate::ai::agent::tool::result::{CallOutput, CallResult, ExecutionError, ExecutionResult};
 use crate::ai::resolver::tool::{IToolCall, ToolDefination};
 use crate::http::HttpClient;
 
@@ -179,14 +175,12 @@ impl RemoteProxy {
 mod tests {
     use super::*;
 
-    use axum::Json;
-    use axum::Router;
+    use std::sync::Arc;
+
+    use axum::{Json, Router};
     use axum::extract::State;
     use axum::routing::{get, post};
-
-    use std::sync::Arc;
-    use tokio::sync::Mutex;
-    use tokio::sync::oneshot;
+    use tokio::sync::{Mutex, oneshot};
 
     struct FakeToolCall {
         id: String,

@@ -26,8 +26,8 @@ pub mod result {
     #[derive(Debug)]
     pub enum ResolveError {
         /// API returned no choices.
-        NoChoice,
-        /// OpenAI API returned an error.
+        NoChoice { message: String },
+        /// API returned an error.
         Api { status: u16, message: String },
         /// HTTP request / network layer failure.
         Network { message: String },
@@ -35,6 +35,28 @@ pub mod result {
         JsonSerde { message: String },
         /// Something else went wrong.
         Unknown { message: String },
+    }
+
+    impl std::fmt::Display for ResolveError {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                ResolveError::NoChoice { message } => {
+                    write!(f, "API 未返回有效响应：{message}")
+                }
+                ResolveError::Api { status, message } => {
+                    write!(f, "API 错误 (HTTP {status})：{message}")
+                }
+                ResolveError::Network { message } => {
+                    write!(f, "网络错误：{message}")
+                }
+                ResolveError::JsonSerde { message } => {
+                    write!(f, "数据解析错误：{message}")
+                }
+                ResolveError::Unknown { message } => {
+                    write!(f, "未知错误：{message}")
+                }
+            }
+        }
     }
 
     pub type ResolveResult<T> = std::result::Result<T, ResolveError>;

@@ -1,0 +1,1850 @@
+[
+  {
+    "id": "dryice",
+    "pattern": "(?i:Dryice)",
+    "content": "职位：嵌字",
+    "title": "dryice"
+  },
+  {
+    "id": "wen-zi",
+    "pattern": "文字",
+    "content": "职位：翻译 校对",
+    "title": "文字"
+  },
+  {
+    "id": "guu",
+    "pattern": "(?i:GUU)",
+    "content": "职位：翻译",
+    "title": "guu"
+  },
+  {
+    "id": "jackerjack",
+    "pattern": "(?i:JackerJack)",
+    "content": "职位：翻译 校对",
+    "title": "jackerjack"
+  },
+  {
+    "id": "ni-tai-chong",
+    "pattern": "拟态虫",
+    "content": "职位：翻译 校对",
+    "title": "拟态虫"
+  },
+  {
+    "id": "citrus",
+    "pattern": "(?i:citrus)",
+    "content": "职位：翻译 校对 ？",
+    "title": "citrus"
+  },
+  {
+    "id": "sucofo",
+    "pattern": "(?i:Sucofo)",
+    "content": "职位：翻译 嵌字",
+    "title": "sucofo"
+  },
+  {
+    "id": "xia-mu-li",
+    "pattern": "夏目历|夏目",
+    "content": "职位：嵌字 监修 翻译",
+    "title": "夏目历"
+  },
+  {
+    "id": "mo-yu-i",
+    "pattern": "モユイ",
+    "content": "职位：？",
+    "title": "モユイ"
+  },
+  {
+    "id": "kin",
+    "pattern": "(?i:Kin)",
+    "content": "职位：嵌字",
+    "title": "kin"
+  },
+  {
+    "id": "bai-liu",
+    "pattern": "白柳",
+    "content": "职位：翻译 校对",
+    "title": "白柳"
+  },
+  {
+    "id": "pkuism",
+    "pattern": "(?i:Pkuism)|(?i:pk)",
+    "content": "职位：嵌字 监修 翻译",
+    "title": "pkuism"
+  },
+  {
+    "id": "zi-ye",
+    "pattern": "梓椰",
+    "content": "职位：翻译",
+    "title": "梓椰"
+  },
+  {
+    "id": "lan-feng",
+    "pattern": "岚枫",
+    "content": "职位：翻译 校对",
+    "title": "岚枫"
+  },
+  {
+    "id": "mendoukun",
+    "pattern": "(?i:mendoukun)",
+    "content": "职位：？",
+    "title": "mendoukun"
+  },
+  {
+    "id": "mikasa",
+    "pattern": "(?i:Mikasa)",
+    "content": "职位：嵌字",
+    "title": "mikasa"
+  },
+  {
+    "id": "qi-wang-yin-he",
+    "pattern": "祈望银河",
+    "content": "职位：翻译",
+    "title": "祈望银河"
+  },
+  {
+    "id": "alwaysbeline",
+    "pattern": "(?i:alwaysbeline)",
+    "content": "职位：嵌字 翻译？",
+    "title": "alwaysbeline"
+  },
+  {
+    "id": "xi-la-nai",
+    "pattern": "希腊奶",
+    "content": "职位：嵌字",
+    "title": "希腊奶"
+  },
+  {
+    "id": "xi-huan-ying-ying-ying-de-zhu-shu",
+    "pattern": "竹鼠",
+    "content": "职位：嵌字",
+    "title": "喜欢嘤嘤嘤的竹鼠"
+  },
+  {
+    "id": "a-nan",
+    "pattern": "阿楠",
+    "content": "职位：XXX",
+    "title": "阿楠"
+  },
+  {
+    "id": "luo-xin",
+    "pattern": "洛馨",
+    "content": "职位：翻译",
+    "title": "洛馨"
+  },
+  {
+    "id": "ying",
+    "pattern": "樱",
+    "content": "职位：翻译",
+    "title": "樱"
+  },
+  {
+    "id": "mo-shi",
+    "pattern": "魔师",
+    "content": "职位：翻译",
+    "title": "魔师"
+  },
+  {
+    "id": "qian-ming-yu-mo",
+    "pattern": "千明羽沫",
+    "content": "职位：翻译",
+    "title": "千明羽沫"
+  },
+  {
+    "id": "feng-huang-yuan-xiao-ye",
+    "pattern": "咲夜",
+    "content": "职位：翻译 校对",
+    "title": "凤凰院咲夜"
+  },
+  {
+    "id": "a-bi-yu-abiyuu",
+    "pattern": "阿比魚(?i:Abiyuu)",
+    "content": "职位：嵌字",
+    "title": "阿比魚abiyuu"
+  },
+  {
+    "id": "xi-yi",
+    "pattern": "蜥蜴",
+    "content": "职位：嵌字",
+    "title": "蜥蜴"
+  },
+  {
+    "id": "cang-xing",
+    "pattern": "苍星",
+    "content": "职位：翻译 外",
+    "title": "苍星"
+  },
+  {
+    "id": "yk",
+    "pattern": "(?i:Yk)",
+    "content": "职位：翻译",
+    "title": "yk"
+  },
+  {
+    "id": "lyrica",
+    "pattern": "(?i:Lyrica)",
+    "content": "职位：翻译",
+    "title": "lyrica"
+  },
+  {
+    "id": "yang-sheng-qi",
+    "pattern": "杨声器|喇叭",
+    "content": "职位：嵌字 图源 派活",
+    "title": "杨声器"
+  },
+  {
+    "id": "mei-shi-cuo-dao-xiao-jie-xiao-xiao-de-ye-hen-ke-ai",
+    "pattern": "没事锉刀小姐小小的也很可爱",
+    "content": "职位：翻译 校对",
+    "title": "没事锉刀小姐小小的也很可爱"
+  },
+  {
+    "id": "xiang-ba-ba",
+    "pattern": "香粑粑",
+    "content": "职位：翻译",
+    "title": "香粑粑"
+  },
+  {
+    "id": "dai-yang-hua-tan",
+    "pattern": "待氧化碳",
+    "content": "职位：身份未标注",
+    "title": "待氧化碳"
+  },
+  {
+    "id": "dmonitor",
+    "pattern": "(?i:DMonitor)",
+    "content": "职位：身份未标注",
+    "title": "dmonitor"
+  },
+  {
+    "id": "liu-xing-metro",
+    "pattern": "流星(?i:Metro)",
+    "content": "职位：翻译",
+    "title": "流星metro"
+  },
+  {
+    "id": "xiang-shui-jue",
+    "pattern": "想睡觉",
+    "content": "职位：翻译",
+    "title": "想睡觉"
+  },
+  {
+    "id": "chun-qiu-fen",
+    "pattern": "春秋分",
+    "content": "职位：嵌字",
+    "title": "春秋分"
+  },
+  {
+    "id": "manaka",
+    "pattern": "(?i:MANAKA)",
+    "content": "职位：嵌字",
+    "title": "manaka"
+  },
+  {
+    "id": "debu-mao-xian-jia",
+    "pattern": "(?i:debu)(?:冒险家)?|(?i:parody)",
+    "content": "职位：翻译 校对，白杨现组长",
+    "title": "debu冒险家"
+  },
+  {
+    "id": "ming-mei-le-ke-jiu-zhen-mei-li",
+    "pattern": "命没了可就真美丽",
+    "content": "职位：翻译 校对",
+    "title": "命没了可就真美丽"
+  },
+  {
+    "id": "shi-n-ku-ro",
+    "pattern": "シンクロ",
+    "content": "职位：？",
+    "title": "シンクロ"
+  },
+  {
+    "id": "ling-han-ke",
+    "pattern": "凌寒克",
+    "content": "职位：翻译",
+    "title": "凌寒克"
+  },
+  {
+    "id": "ayana",
+    "pattern": "(?i:Ayana)",
+    "content": "职位：嵌字",
+    "title": "ayana"
+  },
+  {
+    "id": "mo-luo-hui",
+    "pattern": "沫洛会",
+    "content": "职位：嵌字",
+    "title": "沫洛会"
+  },
+  {
+    "id": "wan-jiu",
+    "pattern": "丸玖",
+    "content": "职位：嵌字 监修",
+    "title": "丸玖"
+  },
+  {
+    "id": "han-hua-de-zhu-shu",
+    "pattern": "竹鼠",
+    "content": "职位：嵌字，注意要和 “竹鼠王” 区分",
+    "title": "汉化的竹鼠"
+  },
+  {
+    "id": "xue-yue",
+    "pattern": "雪月",
+    "content": "职位：翻译",
+    "title": "雪月"
+  },
+  {
+    "id": "ren-sheng-zai-du",
+    "pattern": "人生在读",
+    "content": "职位：？",
+    "title": "人生在读"
+  },
+  {
+    "id": "xing-yun-hoshiin",
+    "pattern": "星韵(?i:Hoshiin)",
+    "content": "职位：嵌字",
+    "title": "星韵hoshiin"
+  },
+  {
+    "id": "fan-fan-ka",
+    "pattern": "饭饭卡",
+    "content": "职位：？",
+    "title": "饭饭卡"
+  },
+  {
+    "id": "xiao-feng",
+    "pattern": "小凤",
+    "content": "职位：翻译 校对",
+    "title": "小凤"
+  },
+  {
+    "id": "sofa",
+    "pattern": "(?i:sofa)",
+    "content": "职位：美工",
+    "title": "sofa"
+  },
+  {
+    "id": "xiboly",
+    "pattern": "(?i:xiboly)",
+    "content": "职位：图源",
+    "title": "xiboly"
+  },
+  {
+    "id": "bai-xiao",
+    "pattern": "白硝",
+    "content": "职位：？",
+    "title": "白硝"
+  },
+  {
+    "id": "nonewhite",
+    "pattern": "(?i:NoneWhite)",
+    "content": "职位：嵌字",
+    "title": "nonewhite"
+  },
+  {
+    "id": "yuu",
+    "pattern": "(?i:YUU)",
+    "content": "职位：？",
+    "title": "yuu"
+  },
+  {
+    "id": "lan-shan",
+    "pattern": "阑珊",
+    "content": "职位：嵌字",
+    "title": "阑珊"
+  },
+  {
+    "id": "dragoud",
+    "pattern": "(?i:dragoud)",
+    "content": "职位：翻译",
+    "title": "dragoud"
+  },
+  {
+    "id": "shenziyun",
+    "pattern": "(?i:shenziyun)",
+    "content": "职位：翻译 嵌字",
+    "title": "shenziyun"
+  },
+  {
+    "id": "hefa",
+    "pattern": "(?i:hefa)",
+    "content": "职位：合法 翻译",
+    "title": "hefa"
+  },
+  {
+    "id": "meng-huan",
+    "pattern": "梦焕",
+    "content": "职位：翻译",
+    "title": "梦焕"
+  },
+  {
+    "id": "qian-yu",
+    "pattern": "浅语",
+    "content": "职位：嵌字",
+    "title": "浅语"
+  },
+  {
+    "id": "fang-sheng-ren",
+    "pattern": "仿生人",
+    "content": "职位：翻译",
+    "title": "仿生人"
+  },
+  {
+    "id": "chi-e-n-ri-a-ku",
+    "pattern": "チェンリアク",
+    "content": "职位：翻译 校对",
+    "title": "チェンリアク"
+  },
+  {
+    "id": "zi-you-na-ren",
+    "pattern": "自由な人",
+    "content": "职位：翻译",
+    "title": "自由な人"
+  },
+  {
+    "id": "devin77",
+    "pattern": "(?i:Devin77)",
+    "content": "职位：？",
+    "title": "devin77"
+  },
+  {
+    "id": "dun-yin-xiang-chen",
+    "pattern": "遁音饗塵|遁音",
+    "content": "职位：翻译 校对",
+    "title": "遁音饗塵"
+  },
+  {
+    "id": "lv-lv-zi",
+    "pattern": "驴驴子|(?i:lvlvko)|律律子",
+    "content": "职位：翻译 校对，在组外参与正式出版读物的本地化工作",
+    "title": "驴驴子"
+  },
+  {
+    "id": "di-ao-de-huang-jin-dai-mao",
+    "pattern": "迪奥的黄金呆毛",
+    "content": "职位：嵌字",
+    "title": "迪奥的黄金呆毛"
+  },
+  {
+    "id": "lve-lve-lve",
+    "pattern": "略略略|略立方",
+    "content": "职位：翻译",
+    "title": "略略略"
+  },
+  {
+    "id": "fei-niao",
+    "pattern": "飛鳥|飞鸟",
+    "content": "职位：翻译",
+    "title": "飛鳥"
+  },
+  {
+    "id": "li-wu-fan",
+    "pattern": "栗悟飯|栗悟饭",
+    "content": "职位：嵌字",
+    "title": "栗悟飯"
+  },
+  {
+    "id": "xiang-sean",
+    "pattern": "翔(?i:Sean)",
+    "content": "职位：翻译",
+    "title": "翔sean"
+  },
+  {
+    "id": "shan-yang-vs-e-luo-si-nv-ren",
+    "pattern": "山羊(?i:VS)俄罗斯女人",
+    "content": "职位：？",
+    "title": "山羊vs俄罗斯女人"
+  },
+  {
+    "id": "chenxlbyd",
+    "pattern": "(?i:chenxlbyd)",
+    "content": "职位：？",
+    "title": "chenxlbyd"
+  },
+  {
+    "id": "jiang-wen-chuan",
+    "pattern": "姜文川",
+    "content": "职位：？",
+    "title": "姜文川"
+  },
+  {
+    "id": "zhi-mo-li-yin",
+    "pattern": "咫墨离音|咫墨",
+    "content": "职位：翻译",
+    "title": "咫墨离音"
+  },
+  {
+    "id": "xiang-gu-hua-ji-mian",
+    "pattern": "香菇滑稽面",
+    "content": "职位：翻译",
+    "title": "香菇滑稽面"
+  },
+  {
+    "id": "yyvivi",
+    "pattern": "(?i:yyvivi)",
+    "content": "职位：？",
+    "title": "yyvivi"
+  },
+  {
+    "id": "lycauseeyri",
+    "pattern": "(?i:LycauseEyri)",
+    "content": "职位：翻译 校对",
+    "title": "lycauseeyri"
+  },
+  {
+    "id": "xiao-ran-ti-bu-qi-jin",
+    "pattern": "小然|嘉然",
+    "content": "职位：嵌字",
+    "title": "小然提不起劲"
+  },
+  {
+    "id": "jin-jin-mao",
+    "pattern": "金金猫",
+    "content": "职位：？",
+    "title": "金金猫"
+  },
+  {
+    "id": "mu-zi",
+    "pattern": "沐子",
+    "content": "职位：嵌字",
+    "title": "沐子"
+  },
+  {
+    "id": "chun-ri-ye-chi-n-pi",
+    "pattern": "春日野チンピー",
+    "content": "职位：？",
+    "title": "春日野チンピー"
+  },
+  {
+    "id": "kokode",
+    "pattern": "(?i:kokode)",
+    "content": "职位：XXX",
+    "title": "kokode"
+  },
+  {
+    "id": "tian-hen",
+    "pattern": "天痕",
+    "content": "职位：嵌字",
+    "title": "天痕"
+  },
+  {
+    "id": "makabaka",
+    "pattern": "(?i:Makabaka)",
+    "content": "职位：？",
+    "title": "makabaka"
+  },
+  {
+    "id": "qiu-ye-sheng-sheng",
+    "pattern": "秋叶",
+    "content": "职位：嵌字",
+    "title": "秋叶声生"
+  },
+  {
+    "id": "gu-ba-bi-lun",
+    "pattern": "古巴比伦",
+    "content": "职位：翻译",
+    "title": "古巴比伦"
+  },
+  {
+    "id": "hua-hua-zhong-de-xiao-hu-li",
+    "pattern": "画画中的小狐狸",
+    "content": "职位：嵌字XXX",
+    "title": "画画中的小狐狸"
+  },
+  {
+    "id": "angry-fish",
+    "pattern": "(?i:Angry_Fish)",
+    "content": "职位：嵌字",
+    "title": "angry-fish"
+  },
+  {
+    "id": "lian-an-san-dai-shi",
+    "pattern": "莲岸三代式",
+    "content": "职位：？",
+    "title": "莲岸三代式"
+  },
+  {
+    "id": "hai-gui-de-yan-lei",
+    "pattern": "海龟的眼泪",
+    "content": "职位：？",
+    "title": "海龟的眼泪"
+  },
+  {
+    "id": "l123",
+    "pattern": "(?i:L123)",
+    "content": "职位：？",
+    "title": "l123"
+  },
+  {
+    "id": "lan-ling-w",
+    "pattern": "兰陵(?i:w)",
+    "content": "职位：翻译 校对",
+    "title": "兰陵w"
+  },
+  {
+    "id": "hao-duo-xian-a",
+    "pattern": "好多线啊",
+    "content": "职位：翻译 嵌字",
+    "title": "好多线啊"
+  },
+  {
+    "id": "jiang-nan-xiao-mi-zhou",
+    "pattern": "江南小米粥|小米粥",
+    "content": "职位：嵌字 监修",
+    "title": "江南小米粥"
+  },
+  {
+    "id": "kokoro-official",
+    "pattern": "(?i:kokoro_official)",
+    "content": "职位：？",
+    "title": "kokoro-official"
+  },
+  {
+    "id": "tong",
+    "pattern": "(?i:Tong)",
+    "content": "职位：？",
+    "title": "tong"
+  },
+  {
+    "id": "ruo-ci",
+    "pattern": "若辞",
+    "content": "职位：？",
+    "title": "若辞"
+  },
+  {
+    "id": "cheng-kan-han",
+    "pattern": "承栞邯",
+    "content": "职位：嵌字 XX",
+    "title": "承栞邯"
+  },
+  {
+    "id": "zealot",
+    "pattern": "(?i:Zealot)",
+    "content": "职位：翻译",
+    "title": "zealot"
+  },
+  {
+    "id": "tao-le-si",
+    "pattern": "桃乐丝",
+    "content": "职位：？",
+    "title": "桃乐丝"
+  },
+  {
+    "id": "u-ru-ku",
+    "pattern": "うるく",
+    "content": "职位：翻译",
+    "title": "うるく"
+  },
+  {
+    "id": "dai-shan-ren",
+    "pattern": "带善人",
+    "content": "职位：嵌字",
+    "title": "带善人"
+  },
+  {
+    "id": "su-da-lian",
+    "pattern": "苏打恋",
+    "content": "职位：？",
+    "title": "苏打恋"
+  },
+  {
+    "id": "bu-hui-zuo-fan",
+    "pattern": "不会做饭",
+    "content": "职位：翻译 校对",
+    "title": "不会做饭"
+  },
+  {
+    "id": "qq-594991845",
+    "pattern": "594991845",
+    "content": "职位：？",
+    "title": "594991845"
+  },
+  {
+    "id": "ai-qing-de-zhong-ji-xing-shi-shi-ntr",
+    "pattern": "爱情的终极形式是(?i:ntr)",
+    "content": "职位：翻译",
+    "title": "爱情的终极形式是ntr"
+  },
+  {
+    "id": "luo-ye",
+    "pattern": "落叶",
+    "content": "职位：嵌字",
+    "title": "落叶"
+  },
+  {
+    "id": "qi-shen",
+    "pattern": "桤屾",
+    "content": "职位：嵌字？",
+    "title": "桤屾"
+  },
+  {
+    "id": "soy",
+    "pattern": "(?i:Soy)",
+    "content": "职位：嵌字",
+    "title": "soy"
+  },
+  {
+    "id": "chuang",
+    "pattern": "(?i:chuang)",
+    "content": "职位：闯\"嵌字",
+    "title": "chuang"
+  },
+  {
+    "id": "tsubaki-hi-me",
+    "pattern": "(?i:Tsubaki_hi_me)",
+    "content": "职位：？",
+    "title": "tsubaki-hi-me"
+  },
+  {
+    "id": "neutrino",
+    "pattern": "(?i:Neutrino)",
+    "content": "职位：？",
+    "title": "neutrino"
+  },
+  {
+    "id": "gai-qu-shen-me-ming-zi-hao",
+    "pattern": "該取什麼名字好",
+    "content": "职位：？",
+    "title": "該取什麼名字好"
+  },
+  {
+    "id": "bing-shang-qian-hua",
+    "pattern": "冰殇千华",
+    "content": "职位：翻译",
+    "title": "冰殇千华"
+  },
+  {
+    "id": "a-li-wu-si-xiao-dui-de-gou",
+    "pattern": "阿里乌斯小队的狗",
+    "content": "职位：？",
+    "title": "阿里乌斯小队的狗"
+  },
+  {
+    "id": "ying-fan-ro-ku-ni-i-1637933156",
+    "pattern": "英翻ロクニイ1637933156",
+    "content": "职位：？",
+    "title": "英翻ロクニイ1637933156"
+  },
+  {
+    "id": "lios",
+    "pattern": "(?i:lios)",
+    "content": "职位：翻译",
+    "title": "lios"
+  },
+  {
+    "id": "shiyio",
+    "pattern": "(?i:Shiyio)",
+    "content": "职位：嵌字",
+    "title": "shiyio"
+  },
+  {
+    "id": "xing-chen-wang-da-pao",
+    "pattern": "星辰王大炮",
+    "content": "职位：嵌字",
+    "title": "星辰王大炮"
+  },
+  {
+    "id": "ray",
+    "pattern": "(?i:Ray)",
+    "content": "职位：？",
+    "title": "ray"
+  },
+  {
+    "id": "yeega",
+    "pattern": "(?i:yeega)",
+    "content": "职位：翻译",
+    "title": "yeega"
+  },
+  {
+    "id": "ju-ruo-lc",
+    "pattern": "蒟蒻(?i:LC)|(?i:lc)",
+    "content": "职位：翻译",
+    "title": "蒟蒻lc"
+  },
+  {
+    "id": "sa-ka-ki",
+    "pattern": "さかき",
+    "content": "职位：翻译",
+    "title": "さかき"
+  },
+  {
+    "id": "xnsymzdj",
+    "pattern": "(?i:xnsymzdj)",
+    "content": "职位：？",
+    "title": "xnsymzdj"
+  },
+  {
+    "id": "mmm",
+    "pattern": "(?i:mmm)",
+    "content": "职位：？",
+    "title": "mmm"
+  },
+  {
+    "id": "1-ki-yu-84",
+    "pattern": "1きゅ84",
+    "content": "职位：？",
+    "title": "1きゅ84"
+  },
+  {
+    "id": "chang-chun-teng",
+    "pattern": "常春藤",
+    "content": "职位：翻译",
+    "title": "常春藤"
+  },
+  {
+    "id": "su-er",
+    "pattern": "苏尔",
+    "content": "职位：？",
+    "title": "苏尔"
+  },
+  {
+    "id": "a-man",
+    "pattern": "啊满",
+    "content": "职位：？",
+    "title": "啊满"
+  },
+  {
+    "id": "bing-ke-le",
+    "pattern": "冰可乐",
+    "content": "职位：？",
+    "title": "冰可乐"
+  },
+  {
+    "id": "meng-lao",
+    "pattern": "梦佬",
+    "content": "职位：翻译",
+    "title": "梦佬"
+  },
+  {
+    "id": "2m",
+    "pattern": "(?i:2M)",
+    "content": "职位：翻译 校对",
+    "title": "2m"
+  },
+  {
+    "id": "cola",
+    "pattern": "(?i:Cola)",
+    "content": "职位：嵌字",
+    "title": "cola"
+  },
+  {
+    "id": "kuroroma",
+    "pattern": "(?i:kuroroma)",
+    "content": "职位：？",
+    "title": "kuroroma"
+  },
+  {
+    "id": "you-to-yan-ga-hun-ze-ta-mo-no",
+    "pattern": "油と塩が混ぜたもの|油盐",
+    "content": "职位：翻译",
+    "title": "油と塩が混ぜたもの"
+  },
+  {
+    "id": "ni-zhuan-you-lu",
+    "pattern": "逆转右鹭",
+    "content": "职位：嵌字",
+    "title": "逆转右鹭"
+  },
+  {
+    "id": "xue-yue-ya",
+    "pattern": "雪月涯",
+    "content": "职位：翻译",
+    "title": "雪月涯"
+  },
+  {
+    "id": "mi-feng",
+    "pattern": "秘封",
+    "content": "职位：？",
+    "title": "秘封"
+  },
+  {
+    "id": "mrsk-y01",
+    "pattern": "(?i:Mrsk_y01)",
+    "content": "职位：？",
+    "title": "mrsk-y01"
+  },
+  {
+    "id": "ji-zhi-de-cha-zi",
+    "pattern": "机智的叉子",
+    "content": "职位：？",
+    "title": "机智的叉子"
+  },
+  {
+    "id": "yi-juan-jiao-dai",
+    "pattern": "一卷胶带",
+    "content": "职位：嵌字",
+    "title": "一卷胶带"
+  },
+  {
+    "id": "prizm",
+    "pattern": "(?i:PriZm)",
+    "content": "职位：翻译",
+    "title": "prizm"
+  },
+  {
+    "id": "pu-yan",
+    "pattern": "蒲盐",
+    "content": "职位：翻译",
+    "title": "蒲盐"
+  },
+  {
+    "id": "ying-xiao-lu",
+    "pattern": "樱小路",
+    "content": "职位：？",
+    "title": "樱小路"
+  },
+  {
+    "id": "ivy",
+    "pattern": "(?i:Ivy)",
+    "content": "职位：？",
+    "title": "ivy"
+  },
+  {
+    "id": "qian-a-ran",
+    "pattern": "浅あ然",
+    "content": "职位：翻译？",
+    "title": "浅あ然"
+  },
+  {
+    "id": "xue",
+    "pattern": "雪",
+    "content": "职位：嵌字",
+    "title": "雪"
+  },
+  {
+    "id": "luo-ri-shen-shang",
+    "pattern": "落日神殇",
+    "content": "职位：？",
+    "title": "落日神殇"
+  },
+  {
+    "id": "yi-bao-yun-tian-de-zhi-zhang",
+    "pattern": "义薄云天的智障",
+    "content": "职位：？",
+    "title": "义薄云天的智障"
+  },
+  {
+    "id": "jackhaozhu",
+    "pattern": "(?i:JackHaoZhu)",
+    "content": "职位：？",
+    "title": "jackhaozhu"
+  },
+  {
+    "id": "mmsuperman",
+    "pattern": "(?i:mmsuperman)",
+    "content": "职位：？",
+    "title": "mmsuperman"
+  },
+  {
+    "id": "jiang-shi",
+    "pattern": "僵尸",
+    "content": "职位：嵌字",
+    "title": "僵尸"
+  },
+  {
+    "id": "yu",
+    "pattern": "(?i:Yu)",
+    "content": "职位：？",
+    "title": "yu"
+  },
+  {
+    "id": "hong-ye",
+    "pattern": "红叶",
+    "content": "职位：翻译",
+    "title": "红叶"
+  },
+  {
+    "id": "tan-ge-huang-gua",
+    "pattern": "探戈黄瓜",
+    "content": "职位：翻译",
+    "title": "探戈黄瓜"
+  },
+  {
+    "id": "kai-lu-jiang-de-mao",
+    "pattern": "凯露酱的猫",
+    "content": "职位：？",
+    "title": "凯露酱的猫"
+  },
+  {
+    "id": "gu-bai-ge",
+    "pattern": "骨白鸽",
+    "content": "职位：校对",
+    "title": "骨白鸽"
+  },
+  {
+    "id": "ruo-ye",
+    "pattern": "若叶",
+    "content": "职位：翻译 校对",
+    "title": "若叶"
+  },
+  {
+    "id": "nai-tang",
+    "pattern": "奶糖",
+    "content": "职位：？",
+    "title": "奶糖"
+  },
+  {
+    "id": "jie-guo",
+    "pattern": "借过",
+    "content": "职位：翻译",
+    "title": "借过"
+  },
+  {
+    "id": "marasy",
+    "pattern": "(?i:Marasy)",
+    "content": "职位：？",
+    "title": "marasy"
+  },
+  {
+    "id": "mox",
+    "pattern": "(?i:MoX)",
+    "content": "职位：？",
+    "title": "mox"
+  },
+  {
+    "id": "yu-yu",
+    "pattern": "魚魚",
+    "content": "职位：？",
+    "title": "魚魚"
+  },
+  {
+    "id": "tang-jiao",
+    "pattern": "糖饺",
+    "content": "职位：翻译",
+    "title": "糖饺"
+  },
+  {
+    "id": "mu-ban",
+    "pattern": "木板",
+    "content": "职位：嵌字",
+    "title": "木板"
+  },
+  {
+    "id": "ming-chuan",
+    "pattern": "冥川",
+    "content": "职位：？",
+    "title": "冥川"
+  },
+  {
+    "id": "cywl",
+    "pattern": "(?i:cywl)",
+    "content": "职位：？",
+    "title": "cywl"
+  },
+  {
+    "id": "fu-lan",
+    "pattern": "芙兰",
+    "content": "职位：翻译",
+    "title": "芙兰"
+  },
+  {
+    "id": "ji-nian",
+    "pattern": "纪念",
+    "content": "职位：？",
+    "title": "纪念"
+  },
+  {
+    "id": "guo-wan-piao-pen",
+    "pattern": "郭碗瓢盆",
+    "content": "职位：嵌字",
+    "title": "郭碗瓢盆"
+  },
+  {
+    "id": "qq-2210952619",
+    "pattern": "2210952619",
+    "content": "职位：？",
+    "title": "2210952619"
+  },
+  {
+    "id": "niu-niu",
+    "pattern": "牛牛|灰暗天穹",
+    "content": "职位：翻译 校对",
+    "title": "牛牛"
+  },
+  {
+    "id": "tuanzz",
+    "pattern": "(?i:tuanzz)",
+    "content": "职位：？",
+    "title": "tuanzz"
+  },
+  {
+    "id": "ozz",
+    "pattern": "(?i:ozz)",
+    "content": "职位：？",
+    "title": "ozz"
+  },
+  {
+    "id": "wei-mo",
+    "pattern": "未默",
+    "content": "职位：？",
+    "title": "未默"
+  },
+  {
+    "id": "xiao-yao",
+    "pattern": "晓遥",
+    "content": "职位：嵌字",
+    "title": "晓遥"
+  },
+  {
+    "id": "chun-chun-chun",
+    "pattern": "椿椿椿",
+    "content": "职位：翻译",
+    "title": "椿椿椿"
+  },
+  {
+    "id": "cha-hu-jin-wan-chi-shen-me",
+    "pattern": "茶壶今晚吃什么|茶壶",
+    "content": "职位：嵌字",
+    "title": "茶壶今晚吃什么"
+  },
+  {
+    "id": "wood",
+    "pattern": "(?i:wood)|武德|唔得",
+    "content": "职位：翻译",
+    "title": "wood"
+  },
+  {
+    "id": "ben-zi-chuan",
+    "pattern": "本子川",
+    "content": "职位：嵌字",
+    "title": "本子川"
+  },
+  {
+    "id": "catbl-niao-long",
+    "pattern": "(?i:catbl)|(?i:catbirdloong)|猫币",
+    "content": "职位：嵌字",
+    "title": "catbl-鸟龙"
+  },
+  {
+    "id": "gh",
+    "pattern": "(?i:gh)",
+    "content": "职位：？",
+    "title": "gh"
+  },
+  {
+    "id": "luo-chen",
+    "pattern": "洛辰",
+    "content": "职位：嵌字",
+    "title": "洛辰"
+  },
+  {
+    "id": "jia-ming",
+    "pattern": "佳名",
+    "content": "职位：？",
+    "title": "佳名"
+  },
+  {
+    "id": "ye-no-na-i-guo",
+    "pattern": "夜のない国",
+    "content": "职位：？",
+    "title": "夜のない国"
+  },
+  {
+    "id": "qian-xin-xing",
+    "pattern": "千新星",
+    "content": "职位：美工",
+    "title": "千新星"
+  },
+  {
+    "id": "4920h",
+    "pattern": "(?i:4920h)",
+    "content": "职位：嵌字 监修",
+    "title": "4920h"
+  },
+  {
+    "id": "akasi",
+    "pattern": "(?i:akasi)",
+    "content": "职位：嵌字",
+    "title": "akasi"
+  },
+  {
+    "id": "fan-jia-tu-dou",
+    "pattern": "番茄土豆",
+    "content": "职位：嵌字",
+    "title": "番茄土豆"
+  },
+  {
+    "id": "ban-chu-shi",
+    "pattern": "伴除使",
+    "content": "职位：翻译",
+    "title": "伴除使"
+  },
+  {
+    "id": "ren-sheng-ruo-zhi-ru-chu-jian",
+    "pattern": "人生若只如初见",
+    "content": "职位：？",
+    "title": "人生若只如初见"
+  },
+  {
+    "id": "hbys",
+    "pattern": "(?i:hbys)",
+    "content": "职位：身份未标注",
+    "title": "hbys"
+  },
+  {
+    "id": "ji-yuan-yuan-ji-le",
+    "pattern": "祭缘",
+    "content": "职位：嵌字",
+    "title": "祭缘圆寂了"
+  },
+  {
+    "id": "nikocada",
+    "pattern": "(?i:nikocada)",
+    "content": "职位：？",
+    "title": "nikocada"
+  },
+  {
+    "id": "deng-deng-jiang",
+    "pattern": "灯灯酱",
+    "content": "职位：？",
+    "title": "灯灯酱"
+  },
+  {
+    "id": "66b22527b562d3b3abac4482",
+    "pattern": "(?i:66b22527b562d3b3abac4482)",
+    "content": "职位：嵌字 美工",
+    "title": "66b22527b562d3b3abac4482"
+  },
+  {
+    "id": "kiilii",
+    "pattern": "(?i:Kiilii)",
+    "content": "职位：嵌字",
+    "title": "kiilii"
+  },
+  {
+    "id": "delta4-7",
+    "pattern": "(?i:Delta4_7)",
+    "content": "职位：翻译",
+    "title": "delta4-7"
+  },
+  {
+    "id": "idangyang",
+    "pattern": "(?i:idangyang)",
+    "content": "职位：？",
+    "title": "idangyang"
+  },
+  {
+    "id": "su-su-su",
+    "pattern": "宿溯夙|(?i:su3)",
+    "content": "职位：嵌字",
+    "title": "宿溯夙"
+  },
+  {
+    "id": "qi-bai",
+    "pattern": "七佰",
+    "content": "职位：翻译",
+    "title": "七佰"
+  },
+  {
+    "id": "nana-na-na-na",
+    "pattern": "(?i:NANA)呐呐呐",
+    "content": "职位：嵌字",
+    "title": "nana呐呐呐"
+  },
+  {
+    "id": "la-ge-ti-mo",
+    "pattern": "提莫",
+    "content": "职位：嵌字",
+    "title": "辣个提莫"
+  },
+  {
+    "id": "ai-mei-te-sai-er-ke",
+    "pattern": "爱梅特赛尔克",
+    "content": "职位：身份未标注",
+    "title": "爱梅特赛尔克"
+  },
+  {
+    "id": "tbm1233",
+    "pattern": "(?i:tbm1233)",
+    "content": "职位：嵌字",
+    "title": "tbm1233"
+  },
+  {
+    "id": "yin-shi",
+    "pattern": "隐士",
+    "content": "职位：嵌字",
+    "title": "隐士"
+  },
+  {
+    "id": "ba-la",
+    "pattern": "粑拉",
+    "content": "职位：翻译",
+    "title": "粑拉"
+  },
+  {
+    "id": "kk2024",
+    "pattern": "(?i:kk2024)",
+    "content": "职位：身份未标注",
+    "title": "kk2024"
+  },
+  {
+    "id": "mu-yang-ren",
+    "pattern": "牧羊人",
+    "content": "职位：美工",
+    "title": "牧羊人"
+  },
+  {
+    "id": "si-kong",
+    "pattern": "思空",
+    "content": "职位：翻译",
+    "title": "思空"
+  },
+  {
+    "id": "qq-1319944358",
+    "pattern": "1319944358",
+    "content": "职位：？",
+    "title": "1319944358"
+  },
+  {
+    "id": "jian-wu-sheng",
+    "pattern": "剑無生",
+    "content": "职位：美工",
+    "title": "剑無生"
+  },
+  {
+    "id": "bai-di-kai-ge",
+    "pattern": "白滴凯鸽",
+    "content": "职位：嵌字",
+    "title": "白滴凯鸽"
+  },
+  {
+    "id": "will",
+    "pattern": "(?i:will)",
+    "content": "职位：？",
+    "title": "will"
+  },
+  {
+    "id": "nuo-xing",
+    "pattern": "诺星",
+    "content": "职位：翻译",
+    "title": "诺星"
+  },
+  {
+    "id": "shi-yue-qi-yu",
+    "pattern": "十月祈雨",
+    "content": "职位：嵌字",
+    "title": "十月祈雨"
+  },
+  {
+    "id": "yi-er-san-si-wu-liu-qi",
+    "pattern": "一二三四五六七",
+    "content": "职位：？",
+    "title": "一二三四五六七"
+  },
+  {
+    "id": "misaka1152",
+    "pattern": "(?i:Misaka1152)",
+    "content": "职位：？",
+    "title": "misaka1152"
+  },
+  {
+    "id": "dai-shu-li-he",
+    "pattern": "殆鼠礼盒",
+    "content": "职位：？",
+    "title": "殆鼠礼盒"
+  },
+  {
+    "id": "shi-yun-ying",
+    "pattern": "拭雲影",
+    "content": "职位：翻译",
+    "title": "拭雲影"
+  },
+  {
+    "id": "kong-bai-blank",
+    "pattern": "空白(?i:blank)",
+    "content": "职位：嵌字",
+    "title": "空白blank"
+  },
+  {
+    "id": "yan-ling",
+    "pattern": "焱铃",
+    "content": "职位：嵌字",
+    "title": "焱铃"
+  },
+  {
+    "id": "le-zai",
+    "pattern": "乐仔",
+    "content": "职位：？",
+    "title": "乐仔"
+  },
+  {
+    "id": "yu-qian",
+    "pattern": "予潜",
+    "content": "职位：？",
+    "title": "予潜"
+  },
+  {
+    "id": "bei-si-huan-qi-tao-liu-dai-shi",
+    "pattern": "北四环乞讨流带师",
+    "content": "职位：嵌字",
+    "title": "北四环乞讨流带师"
+  },
+  {
+    "id": "lu-guo-de-you-ke",
+    "pattern": "路过的游客",
+    "content": "职位：嵌字",
+    "title": "路过的游客"
+  },
+  {
+    "id": "apoptosis",
+    "pattern": "(?i:Apoptosis)",
+    "content": "职位：？",
+    "title": "apoptosis"
+  },
+  {
+    "id": "kong-kong",
+    "pattern": "空空",
+    "content": "职位：图源？",
+    "title": "空空"
+  },
+  {
+    "id": "mirage",
+    "pattern": "(?i:mirage)",
+    "content": "职位：嵌字",
+    "title": "mirage"
+  },
+  {
+    "id": "ke-lin-si",
+    "pattern": "科林斯",
+    "content": "职位：嵌字",
+    "title": "科林斯"
+  },
+  {
+    "id": "xiao-he-lu-yue",
+    "pattern": "宵和",
+    "content": "职位：翻译",
+    "title": "宵和露月"
+  },
+  {
+    "id": "xc666xc",
+    "pattern": "(?i:xc666xc)",
+    "content": "职位：？",
+    "title": "xc666xc"
+  },
+  {
+    "id": "dian-rong",
+    "pattern": "电容",
+    "content": "职位：翻译 校对",
+    "title": "电容"
+  },
+  {
+    "id": "ka-mi-ye",
+    "pattern": "卡弥耶",
+    "content": "职位：翻译",
+    "title": "卡弥耶"
+  },
+  {
+    "id": "dao-di",
+    "pattern": "倒地",
+    "content": "职位：嵌字",
+    "title": "倒地"
+  },
+  {
+    "id": "bai-qian",
+    "pattern": "柏芊",
+    "content": "职位：翻译",
+    "title": "柏芊"
+  },
+  {
+    "id": "ye-kong-tsu-ba-sa",
+    "pattern": "夜空ツバサ",
+    "content": "职位：翻译",
+    "title": "夜空ツバサ"
+  },
+  {
+    "id": "deewin",
+    "pattern": "(?i:Deewin)",
+    "content": "职位：？",
+    "title": "deewin"
+  },
+  {
+    "id": "bo-luo-bao",
+    "pattern": "菠萝包",
+    "content": "职位：？",
+    "title": "菠萝包"
+  },
+  {
+    "id": "si-wen",
+    "pattern": "斯文",
+    "content": "职位：？",
+    "title": "斯文"
+  },
+  {
+    "id": "stad",
+    "pattern": "(?i:stad)",
+    "content": "职位：？",
+    "title": "stad"
+  },
+  {
+    "id": "zhu-qing-shao-wan",
+    "pattern": "渚清|少婉",
+    "content": "职位：嵌字",
+    "title": "渚清少婉"
+  },
+  {
+    "id": "hua-yu",
+    "pattern": "花_宇_",
+    "content": "职位：嵌字",
+    "title": "花-宇"
+  },
+  {
+    "id": "114-te-qian-dui",
+    "pattern": "114特遣队",
+    "content": "职位：嵌字",
+    "title": "114特遣队"
+  },
+  {
+    "id": "bai-hu-ye",
+    "pattern": "白虎野",
+    "content": "职位：翻译",
+    "title": "白虎野"
+  },
+  {
+    "id": "yin-jing-yin",
+    "pattern": "银荆银",
+    "content": "职位：翻译",
+    "title": "银荆银"
+  },
+  {
+    "id": "sheng-xiu-bao-he-tang",
+    "pattern": "薄荷糖",
+    "content": "职位：嵌字",
+    "title": "生锈薄荷糖"
+  },
+  {
+    "id": "na-bai",
+    "pattern": "那白",
+    "content": "职位：翻译",
+    "title": "那白"
+  },
+  {
+    "id": "sha-lu-duo",
+    "pattern": "纱露朵",
+    "content": "职位：翻译",
+    "title": "纱露朵"
+  },
+  {
+    "id": "dexa",
+    "pattern": "(?i:Dexa)",
+    "content": "职位：嵌字",
+    "title": "dexa"
+  },
+  {
+    "id": "ta-ta-tat",
+    "pattern": "塔塔(?i:tat)",
+    "content": "职位：嵌字",
+    "title": "塔塔tat"
+  },
+  {
+    "id": "dong-fang-dong-fang",
+    "pattern": "东方",
+    "content": "职位：嵌字",
+    "title": "东方东方"
+  },
+  {
+    "id": "none",
+    "pattern": "(?i:None)",
+    "content": "职位：嵌字",
+    "title": "none"
+  },
+  {
+    "id": "guai-shu-shu",
+    "pattern": "怪蜀黍",
+    "content": "职位：修图",
+    "title": "怪蜀黍"
+  },
+  {
+    "id": "xinyan-xy",
+    "pattern": "(?i:xinyan_xy)",
+    "content": "职位：翻译",
+    "title": "xinyan-xy"
+  },
+  {
+    "id": "you-ling-ghostlizz",
+    "pattern": "幽灵(?i:GhostLizz)",
+    "content": "职位：翻译",
+    "title": "幽灵ghostlizz"
+  },
+  {
+    "id": "nai-nai-zi",
+    "pattern": "奈奈子",
+    "content": "职位：翻译",
+    "title": "奈奈子"
+  },
+  {
+    "id": "bin",
+    "pattern": "(?i:bin)",
+    "content": "职位：嵌字",
+    "title": "bin"
+  },
+  {
+    "id": "mo-yuan-chen-ai",
+    "pattern": "墨缘尘埃",
+    "content": "职位：嵌字",
+    "title": "墨缘尘埃"
+  },
+  {
+    "id": "skybeginer",
+    "pattern": "(?i:skyb)",
+    "content": "职位：嵌字",
+    "title": "skybeginer"
+  },
+  {
+    "id": "ye-nai-niu",
+    "pattern": "椰奶牛",
+    "content": "职位：翻译",
+    "title": "椰奶牛"
+  },
+  {
+    "id": "yimeko",
+    "pattern": "(?i:yimeko)",
+    "content": "职位：嵌字",
+    "title": "yimeko"
+  },
+  {
+    "id": "pure-blue",
+    "pattern": "(?i:pure_blue)",
+    "content": "职位：翻译 嵌字",
+    "title": "pure-blue"
+  },
+  {
+    "id": "unko-o-i-shi-i",
+    "pattern": "(?i:unko)おいしい",
+    "content": "职位：？",
+    "title": "unkoおいしい"
+  },
+  {
+    "id": "sakurayui",
+    "pattern": "(?i:SakuraYui)",
+    "content": "职位：？",
+    "title": "sakurayui"
+  },
+  {
+    "id": "senmei",
+    "pattern": "(?i:senmei)",
+    "content": "职位：嵌字",
+    "title": "senmei"
+  },
+  {
+    "id": "dou-pao-ying",
+    "pattern": "豆泡影",
+    "content": "职位：嵌字",
+    "title": "豆泡影"
+  },
+  {
+    "id": "miao-pa-si",
+    "pattern": "喵帕斯",
+    "content": "职位：嵌字",
+    "title": "喵帕斯"
+  },
+  {
+    "id": "sd-wu",
+    "pattern": "(?i:SD)無|無",
+    "content": "职位：嵌字",
+    "title": "sd無"
+  },
+  {
+    "id": "sheng-xi",
+    "pattern": "绳系",
+    "content": "职位：嵌字",
+    "title": "绳系"
+  },
+  {
+    "id": "cn-ying",
+    "pattern": "(?i:CN_)桜",
+    "content": "职位：翻译",
+    "title": "cn-桜"
+  },
+  {
+    "id": "kuang-suo-mei-you-jiao",
+    "pattern": "美游",
+    "content": "职位：嵌字",
+    "title": "狂嗦美游脚"
+  },
+  {
+    "id": "chi-yu",
+    "pattern": "迟雨",
+    "content": "职位：嵌字",
+    "title": "迟雨"
+  },
+  {
+    "id": "ju-zhang",
+    "pattern": "局长",
+    "content": "职位：翻译 校对",
+    "title": "局长"
+  },
+  {
+    "id": "pikahao",
+    "pattern": "(?i:pikahao)|小笨蛋",
+    "content": "职位：翻译",
+    "title": "pikahao"
+  },
+  {
+    "id": "lan-tang",
+    "pattern": "兰棠",
+    "content": "职位：嵌字",
+    "title": "兰棠"
+  },
+  {
+    "id": "cdissenminatus",
+    "pattern": "(?i:Cdissenminatus)",
+    "content": "职位：？",
+    "title": "cdissenminatus"
+  },
+  {
+    "id": "krkree",
+    "pattern": "(?i:KrKree)",
+    "content": "职位：嵌字",
+    "title": "krkree"
+  },
+  {
+    "id": "you-xi",
+    "pattern": "由希",
+    "content": "职位：翻译",
+    "title": "由希"
+  },
+  {
+    "id": "pko",
+    "pattern": "(?i:pko)",
+    "content": "职位：翻译",
+    "title": "pko"
+  },
+  {
+    "id": "xing-yao",
+    "pattern": "星耀",
+    "content": "职位：？",
+    "title": "星耀"
+  },
+  {
+    "id": "ma-li-mari",
+    "pattern": "麻里(?i:mari)",
+    "content": "职位：？",
+    "title": "麻里mari"
+  },
+  {
+    "id": "kk2",
+    "pattern": "(?i:kk2)",
+    "content": "职位：翻译",
+    "title": "kk2"
+  },
+  {
+    "id": "long-gou-sxfdaddy",
+    "pattern": "龙狗",
+    "content": "职位：嵌字",
+    "title": "龙狗-sxfdaddy"
+  },
+  {
+    "id": "ao-di",
+    "pattern": "奥迪",
+    "content": "职位：嵌字",
+    "title": "奥迪"
+  },
+  {
+    "id": "lu-jiao-jiao",
+    "pattern": "鹿角胶",
+    "content": "职位：翻译",
+    "title": "鹿角胶"
+  },
+  {
+    "id": "hatsu1ki",
+    "pattern": "(?i:Hatsu1ki)|(?i:LB)",
+    "content": "职位：翻译",
+    "title": "hatsu1ki"
+  },
+  {
+    "id": "shan-hu-jiao",
+    "pattern": "珊瑚礁",
+    "content": "职位：美工",
+    "title": "珊瑚礁"
+  },
+  {
+    "id": "yu-du-chen",
+    "pattern": "羽渡尘",
+    "content": "职位：嵌字",
+    "title": "羽渡尘"
+  },
+  {
+    "id": "shu-tiao",
+    "pattern": "薯条",
+    "content": "职位：翻译",
+    "title": "薯条"
+  },
+  {
+    "id": "xiao-ai",
+    "pattern": "小哀",
+    "content": "职位：？",
+    "title": "小哀"
+  },
+  {
+    "id": "yu-chi-zou-yang",
+    "pattern": "御馳走様",
+    "content": "职位：？",
+    "title": "御馳走様"
+  },
+  {
+    "id": "yuan-sen",
+    "pattern": "原森",
+    "content": "职位：翻译",
+    "title": "原森"
+  },
+  {
+    "id": "you-yan-shi-xing",
+    "pattern": "有言|実行",
+    "content": "职位：？",
+    "title": "有言実行"
+  },
+  {
+    "id": "sinenomine",
+    "pattern": "(?i:Sinenomine)",
+    "content": "职位：嵌字",
+    "title": "sinenomine"
+  },
+  {
+    "id": "yhwach",
+    "pattern": "(?i:Yhwach)|(?i:yh)|友哈",
+    "content": "职位：翻译",
+    "title": "yhwach"
+  },
+  {
+    "id": "crow",
+    "pattern": "(?i:crow)",
+    "content": "职位：？",
+    "title": "crow"
+  },
+  {
+    "id": "chu-tou",
+    "pattern": "锄头",
+    "content": "职位：X",
+    "title": "锄头"
+  },
+  {
+    "id": "shi-wen",
+    "pattern": "时温",
+    "content": "职位：美工",
+    "title": "时温"
+  },
+  {
+    "id": "shi-liu-gu",
+    "pattern": "十六谷",
+    "content": "职位：？",
+    "title": "十六谷"
+  },
+  {
+    "id": "shen-you-tian-wai",
+    "pattern": "榊游",
+    "content": "职位：嵌字",
+    "title": "榊游天外"
+  },
+  {
+    "id": "huluobu",
+    "pattern": "(?i:huluobu)|胡萝卜",
+    "content": "职位：美工",
+    "title": "huluobu"
+  },
+  {
+    "id": "xing-ren-zong",
+    "pattern": "杏仁粽",
+    "content": "职位：嵌字",
+    "title": "杏仁粽"
+  }
+]

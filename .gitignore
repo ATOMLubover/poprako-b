@@ -1,4 +1,6 @@
 /target
+/logs/
+/.bot-host.pid
 
 .env*
 !.env.sample
@@ -8,3 +10,9 @@
 .DS_Store
 
 memory/
+!memory/
+memory/*
+!memory/prompts/
+!memory/prompts/*.txt
+!memory/inspirations/
+!memory/inspirations/**

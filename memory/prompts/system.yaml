@@ -1,0 +1,58 @@
+# System prompt manifest – defines which sections are assembled and in what order.
+#
+# embedded:  static prompt files loaded from memory/prompts/ (relative paths).
+# plugins:   reserved for sections contributed by Agent plugins at runtime.
+#
+# Each entry:
+#   id      – unique identifier used in XML <section id="...">.
+#   title   – human-readable title used in XML <section title="...">.
+#   path    – path relative to this file's directory (memory/prompts/).
+#   enabled – when false the section is skipped entirely.
+
+embedded:
+  - id: persona
+    title: 角色身份
+    path: persona.txt
+    enabled: true
+
+  - id: directory
+    title: 提示目录
+    path: directory.txt
+    enabled: true
+
+  - id: scene
+    title: 场景
+    path: scene.txt
+    enabled: true
+
+  - id: input-format
+    title: 用户消息格式
+    path: input-format.txt
+    enabled: true
+
+  - id: injected-context
+    title: 注入上下文
+    path: injected-context.txt
+    enabled: true
+
+  - id: knowledge-tools
+    title: 知识与工具
+    path: knowledge-tools.txt
+    enabled: true
+
+  - id: response-style
+    title: 发言格式
+    path: response-style.txt
+    enabled: true
+
+  - id: safety
+    title: 账号安全
+    path: safety.txt
+    enabled: true
+
+  - id: examples
+    title: 对话示例
+    path: examples.txt
+    enabled: true
+
+plugins: []

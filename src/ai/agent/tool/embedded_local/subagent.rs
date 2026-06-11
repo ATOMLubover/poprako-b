@@ -3,12 +3,14 @@ use std::path::PathBuf;
 
 use openai_oxide::types::chat::{ChatCompletionMessageParam, UserContent};
 
-use crate::ai::agent::tool::DynTool;
-use crate::ai::agent::tool::ITool;
-use crate::ai::agent::tool::local::fs::{ListFilesTool, ReadFileTool};
+use crate::ai::agent::plugin::IAgentPlugin;
+use crate::ai::agent::tool::{DynTool, ITool};
+use crate::ai::agent::tool::embedded_local::fs::{ListFilesTool, ReadFileTool};
 use crate::ai::agent::tool::result::{ExecutionError, ExecutionResult};
 use crate::ai::agent_impl::openai::OpenAiAgentBuilder;
+use crate::ai::resolver::IResolver;
 use crate::ai::resolver::context::ContextBuilder;
+use crate::ai::resolver::message::IMessage;
 use crate::ai::resolver::tool::{ParamDef, PropDef, ToolDefination};
 use crate::ai::resolver_impl::openai::OpenAiResolver;
 
@@ -182,6 +184,23 @@ fn format_results(task_ids: &[String], mut results: HashMap<String, Option<Strin
 ///
 /// No generics leak onto `RunSubagentsTool` — the free function encapsulates
 /// all provider-specific types inside a per-model `match` arm.
+/// Ad-hoc plugin that only provides tools (no interceptor / system prompt).
+struct ToolsPlugin {
+    tools: Vec<DynTool>,
+}
+
+impl<M, R, S, A> IAgentPlugin<M, R, S, A> for ToolsPlugin
+where
+    M: IMessage + Send + Sync + 'static,
+    R: IResolver<Message = M> + Send,
+    S: Send + Sync + 'static,
+    A: Default + Send + Sync + 'static,
+{
+    fn tools(&mut self) -> Vec<DynTool> {
+        std::mem::take(&mut self.tools)
+    }
+}
+
 async fn run_sub_agent(
     model: &str,
     system_prompt: &str,
@@ -199,10 +218,12 @@ async fn run_sub_agent(
                 }])
                 .build();
 
-            let mut agent = OpenAiAgentBuilder::new(cx, resolver).tools(tools).build();
+            let mut agent = OpenAiAgentBuilder::new(cx, resolver)
+                .plugin(ToolsPlugin { tools })
+                .build();
 
             agent
-                .solve(ChatCompletionMessageParam::User {
+                .evaluate(ChatCompletionMessageParam::User {
                     content: UserContent::Text(user_prompt.to_string()),
                     name: None,
                 })

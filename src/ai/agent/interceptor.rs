@@ -5,15 +5,15 @@ use crate::ai::resolver::message::IMessage;
 
 /// Flow control signal returned by non-tool interceptor hooks.
 ///
-/// Each hook called during the agent solve lifecycle returns this to tell the
+/// Each hook called during the agent evaluate lifecycle returns this to tell the
 /// agent what to do next:
 ///
 /// | Variant | Effect |
 /// |---------|--------|
 /// | `Continue` | Proceed to the next hook or lifecycle phase normally. |
 /// | `Stop { output }` | Immediately abort the current phase and finish the
-///   entire solve with the given `output`. The returned string becomes the
-///   final answer of `Agent::solve()`. If `None`, the solve returns `None`. |
+///   entire evaluate with the given `output`. The returned string becomes the
+///   final answer of `Agent::evaluate()`. If `None`, the evaluate returns `None`. |
 #[derive(Debug, PartialEq, Eq)]
 pub enum InterceptorFlow {
     Continue,
@@ -29,7 +29,7 @@ pub enum InterceptorFlow {
 /// | `Skip { content }` | Short-circuit tool execution — pretend the tool
 ///   returned `content` as its result, without actually running it. |
 /// | `Stop { output }` | Immediately abort the current phase and finish the
-///   entire solve with the given `output` (same semantics as
+///   entire evaluate with the given `output` (same semantics as
 ///   [`InterceptorFlow::Stop`]). |
 #[derive(Debug, PartialEq, Eq)]
 pub enum ToolInterceptorFlow {
@@ -38,9 +38,9 @@ pub enum ToolInterceptorFlow {
     Stop { output: Option<String> },
 }
 
-/// IInterceptor trait — hook into the [`Agent`](crate::ai::agent::Agent) solve lifecycle.
+/// IInterceptor trait — hook into the [`Agent`](crate::ai::agent::Agent) evaluate lifecycle.
 ///
-/// Each method is called at a specific node in the solve loop (see the
+/// Each method is called at a specific node in the evaluate loop (see the
 /// individual doc comments). All methods have default no-op implementations
 /// (`InterceptorFlow::Continue`), so you only need to override the ones you
 /// care about.
@@ -52,8 +52,8 @@ pub enum ToolInterceptorFlow {
 /// # Lifecycle overview
 ///
 /// ```text
-/// Agent::solve()
-/// ├── before_solve          ← you are here: once before the loop
+/// Agent::evaluate()
+/// ├── before_evaluate       ← you are here: once before the loop
 /// │
 /// └── loop (repeat until Finish):
 ///     ├── before_loop
@@ -70,7 +70,7 @@ pub enum ToolInterceptorFlow {
 ///     ├── commit messages         ← push action + tool results into Context
 ///     └── after_loop              ← decide next iteration or finish
 ///
-/// after_solve              ← final output, after the loop
+/// after_evaluate           ← final output, after the loop
 /// ```
 #[async_trait::async_trait]
 pub trait IInterceptor<S, M, A>: Send
@@ -79,7 +79,7 @@ where
     M: IMessage + Send + Sync + 'static,
     A: Send + Sync + 'static,
 {
-    /// Called **once** at the very start of [`Agent::solve`], before the solve
+    /// Called **once** at the very start of [`Agent::evaluate`], before the evaluate
     /// loop begins.
     ///
     /// Use this to:
@@ -88,9 +88,9 @@ where
     /// - Perform auth / guard checks and abort early via `Stop`.
     /// - Initialize shared state in `S`.
     ///
-    /// Returning `Stop { output }` **skips the entire solve loop** and jumps
-    /// directly to `after_solve` with the given output.
-    async fn before_solve(&mut self, _state: &mut S, _cx: &mut Context<M, A>) -> InterceptorFlow {
+    /// Returning `Stop { output }` **skips the entire evaluate loop** and jumps
+    /// directly to `after_evaluate` with the given output.
+    async fn before_evaluate(&mut self, _state: &mut S, _cx: &mut Context<M, A>) -> InterceptorFlow {
         InterceptorFlow::Continue
     }
 
@@ -201,7 +201,7 @@ where
     /// loop iteration, right before the agent decides whether to continue or
     /// finish.
     ///
-    /// If you return `Stop` here, the loop exits and `after_solve` is called
+    /// If you return `Stop` here, the loop exits and `after_evaluate` is called
     /// next.
     async fn after_loop(
         &mut self,
@@ -212,7 +212,7 @@ where
         InterceptorFlow::Continue
     }
 
-    /// Called **once after the solve loop finishes** (either naturally with
+    /// Called **once after the evaluate loop finishes** (either naturally with
     /// `Reason::Finish`, or via a `Stop` from any earlier hook).
     ///
     /// This is the last hook before the agent returns to its caller. Use it
@@ -220,7 +220,7 @@ where
     /// - Rewrite or annotate the final output.
     /// - Perform cleanup (close resources, flush logs, emit analytics).
     /// - Post-process state (e.g. save a compacted checkpoint).
-    async fn after_solve(
+    async fn after_evaluate(
         &mut self,
         _state: &mut S,
         _cx: &mut Context<M, A>,
@@ -282,12 +282,12 @@ where
         self.interceptors = interceptors;
     }
 
-    /// Dispatch [`IInterceptor::before_solve`] to all registered interceptors.
-    /// Called by [`Agent::solve`](crate::ai::agent::Agent::solve) once before
+    /// Dispatch [`IInterceptor::before_evaluate`] to all registered interceptors.
+    /// Called by [`Agent::evaluate`](crate::ai::agent::Agent::evaluate) once before
     /// the loop begins.
-    pub async fn before_solve(&mut self, state: &mut S, cx: &mut Context<M, A>) -> InterceptorFlow {
+    pub async fn before_evaluate(&mut self, state: &mut S, cx: &mut Context<M, A>) -> InterceptorFlow {
         for interceptor in &mut self.interceptors {
-            let flow = interceptor.before_solve(state, cx).await;
+            let flow = interceptor.before_evaluate(state, cx).await;
             if flow != InterceptorFlow::Continue {
                 return flow;
             }
@@ -297,7 +297,7 @@ where
     }
 
     /// Dispatch [`IInterceptor::before_loop`] to all registered interceptors.
-    /// Called at the start of each solve-loop iteration.
+    /// Called at the start of each evaluate-loop iteration.
     pub async fn before_loop(
         &mut self,
         state: &mut S,
@@ -432,17 +432,17 @@ where
         InterceptorFlow::Continue
     }
 
-    /// Dispatch [`IInterceptor::after_solve`] to all registered interceptors.
-    /// Called once after the solve loop finishes (naturally or via `Stop`),
+    /// Dispatch [`IInterceptor::after_evaluate`] to all registered interceptors.
+    /// Called once after the evaluate loop finishes (naturally or via `Stop`),
     /// right before the agent returns.
-    pub async fn after_solve(
+    pub async fn after_evaluate(
         &mut self,
         state: &mut S,
         cx: &mut Context<M, A>,
         output: &mut Option<String>,
     ) -> InterceptorFlow {
         for interceptor in &mut self.interceptors {
-            let flow = interceptor.after_solve(state, cx, output).await;
+            let flow = interceptor.after_evaluate(state, cx, output).await;
             if flow != InterceptorFlow::Continue {
                 return flow;
             }

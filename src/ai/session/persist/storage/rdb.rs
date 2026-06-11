@@ -6,22 +6,14 @@ use uuid::Uuid;
 
 mod entity;
 
-use entity::CheckpointEntity;
-use entity::ReconstructedCheckpoint;
-use entity::SessionEntity;
-use entity::SessionStatus;
-use entity::upsert_row;
+use entity::{
+    CheckpointEntity, ReconstructedCheckpoint, SessionEntity, SessionStatus, upsert_row,
+};
 
-use crate::ai::session::persist::data_object::Checkpoint;
-use crate::ai::session::persist::data_object::CheckpointContext;
-use crate::ai::session::persist::data_object::CheckpointKind;
-use crate::ai::session::persist::data_object::CheckpointMessageRef;
-use crate::ai::session::persist::data_object::ContextSnapshot;
-use crate::ai::session::persist::data_object::Message;
-use crate::ai::session::persist::data_object::NewCheckpoint;
-use crate::ai::session::persist::data_object::NewSession;
-use crate::ai::session::persist::data_object::PersistDiagnostics;
-use crate::ai::session::persist::data_object::Session;
+use crate::ai::session::persist::data_object::{
+    Checkpoint, CheckpointContext, CheckpointKind, CheckpointMessageRef, ContextSnapshot, Message,
+    NewCheckpoint, NewSession, PersistDiagnostics, Session,
+};
 use crate::ai::session::persist::storage::IStorage;
 
 #[derive(Clone)]
@@ -733,8 +725,8 @@ impl IStorage for RdbStorage {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ai::session::persist::data_object::Status;
-    use crate::ai::session::persist::data_object::ToolCall;
+
+    use crate::ai::session::persist::data_object::{Status, ToolCall};
 
     fn test_snapshot(_model: &str) -> Vec<Message> {
         vec![

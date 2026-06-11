@@ -24,7 +24,7 @@ Run from the project root:
 ./.agents/skills/check-use-braces/scripts/check_use_braces.sh
 
 # Scan specific files
-./.agents/skills/check-use-braces/scripts/check_use_braces.sh src/ai/agent/openai.rs
+./.agents/skills/check-use-braces/scripts/check_use_braces.sh src/ai/resolver_impl/openai.rs
 ```
 
 ## Expected output
@@ -36,8 +36,8 @@ Run from the project root:
 Or on violations:
 
 ```
-src/ai/agent/openai.rs:3 - VIOLATION
-    use crate::ai::{agent::Agent, resolver::openai::OpenAiResolver};
+src/ai/resolver_impl/openai.rs:3 - VIOLATION
+    use crate::ai::{resolver::IResolver, resolver::action::Action};
 ✗ Found 1 file(s) with violations.
 ```
 

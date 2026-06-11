@@ -1,4 +1,4 @@
-use crate::ai::resolver::message::IMessage;
+use crate::ai::resolver::message::{IMessage, MessageRef};
 use crate::ai::resolver::tool::ToolDefination;
 
 #[derive(Debug, Clone)]
@@ -22,9 +22,50 @@ where
     }
 }
 
+fn trace_annotated_message<M, A>(event: &'static str, message: &AnnotatedMessage<M, A>)
+where
+    M: IMessage + 'static,
+{
+    match message.message.message_ref() {
+        MessageRef::System { content } => {
+            tracing::info!(event, role = "system", content, "context message changed");
+        }
+        MessageRef::User { content } => {
+            tracing::info!(event, role = "user", content, "context message changed");
+        }
+        MessageRef::Assist {
+            content,
+            tool_calls,
+            refusal,
+        } => {
+            tracing::info!(
+                event,
+                role = "assistant",
+                content,
+                tool_call_count = tool_calls.map(|calls| calls.len()).unwrap_or_default(),
+                refusal,
+                "context message changed"
+            );
+        }
+        MessageRef::Tool {
+            tool_call_id,
+            content,
+        } => {
+            tracing::info!(
+                event,
+                role = "tool",
+                tool_call_id,
+                content,
+                "context message changed"
+            );
+        }
+    }
+}
+
 /// Context for the resolver, containing the conversation history and available tools.
 /// It **owns** all messages and tools, so Agent can mutate the context by pushing or deleting
 /// new messages and tools as needed.
+#[derive(Clone)]
 pub struct Context<M, A = ()>
 where
     M: IMessage + 'static,
@@ -50,6 +91,10 @@ where
         self.messages.as_slice()
     }
 
+    pub fn annotated_messages_mut(&mut self) -> &mut [AnnotatedMessage<M, A>] {
+        self.messages.as_mut_slice()
+    }
+
     pub fn message_at(&self, index: usize) -> Option<&M> {
         self.messages.get(index).map(|message| &message.message)
     }
@@ -59,7 +104,21 @@ where
     }
 
     pub fn push_annotated_message(&mut self, message: AnnotatedMessage<M, A>) {
+        trace_annotated_message("push_annotated_message", &message);
+
         self.messages.push(message);
+    }
+
+    /// Insert a message immediately before the current last message.
+    /// If the context has no messages, no message is inserted.
+    pub fn inject_before_last(&mut self, message: AnnotatedMessage<M, A>) {
+        let Some(index) = self.messages.len().checked_sub(1) else {
+            return;
+        };
+
+        trace_annotated_message("inject_before_last", &message);
+
+        self.messages.insert(index, message);
     }
 
     pub fn take_annotated_messages(&mut self) -> Vec<AnnotatedMessage<M, A>> {
@@ -67,6 +126,11 @@ where
     }
 
     pub fn set_annotated_messages(&mut self, messages: Vec<AnnotatedMessage<M, A>>) {
+        tracing::info!(
+            message_count = messages.len(),
+            "replacing all annotated messages in context"
+        );
+
         self.messages = messages;
     }
 
@@ -97,8 +161,7 @@ where
     A: Default,
 {
     pub fn push_message(&mut self, message: M) {
-        self.messages
-            .push(AnnotatedMessage::new(message, A::default()));
+        self.push_annotated_message(AnnotatedMessage::new(message, A::default()));
     }
 
     pub fn take_messages(&mut self) -> Vec<M> {

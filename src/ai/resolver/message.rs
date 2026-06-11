@@ -1,17 +1,17 @@
 use crate::ai::resolver::action::Action;
 use crate::ai::resolver::tool::IToolCall;
 
+// ---------------------------------------------------------------------------
+// Message types
+// ---------------------------------------------------------------------------
+
 #[derive(Debug)]
 pub enum MessageRef<'a, C>
 where
     C: IToolCall,
 {
-    System {
-        content: &'a str,
-    },
-    User {
-        content: &'a str,
-    },
+    System { content: &'a str },
+    User { content: &'a str },
     Assist {
         content: Option<&'a str>,
         tool_calls: Option<&'a [C]>,
@@ -27,12 +27,8 @@ pub enum MessageOwned<C>
 where
     C: IToolCall,
 {
-    System {
-        content: String,
-    },
-    User {
-        content: String,
-    },
+    System { content: String },
+    User { content: String },
     Assist {
         content: Option<String>,
         tool_calls: Option<Vec<C>>,
@@ -57,15 +53,10 @@ pub trait IMessage:
     + for<'a> From<MessageRef<'a, Self::ToolCall>>
     + From<MessageOwned<Self::ToolCall>>
 {
-    // ToolCall will be specified by the implementor, as we do not have to
-    // make a generic constraint on the IMessage trait itself.
     type ToolCall: IToolCall + std::fmt::Debug;
 
-    /// Returns a reference to the message content, which can be used for processing.
-    /// Reduces unnecessary clones.
     fn message_ref(&self) -> MessageRef<'_, Self::ToolCall>;
 
-    /// Returns the role of the message, which can be System, User, Assist, or Tool.
     fn role(&self) -> MessageRole {
         match self.message_ref() {
             MessageRef::System { .. } => MessageRole::System,
@@ -75,3 +66,4 @@ pub trait IMessage:
         }
     }
 }
+
