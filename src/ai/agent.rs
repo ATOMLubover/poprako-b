@@ -1,6 +1,7 @@
 pub mod compact;
 pub mod interceptor;
 pub mod plugin;
+pub mod prompt;
 pub mod tool;
 
 use std::collections::HashMap;
@@ -12,6 +13,10 @@ use crate::ai::agent::interceptor::IInterceptor;
 use crate::ai::agent::interceptor::InterceptorFlow;
 use crate::ai::agent::interceptor::InterceptorRegistry;
 use crate::ai::agent::interceptor::ToolInterceptorFlow;
+use crate::ai::agent::prompt::SectionContent;
+use crate::ai::agent::prompt::SystemPrompt;
+use crate::ai::agent::prompt::SystemPromptSection;
+use crate::ai::agent::prompt::SystemPromptSubSection;
 use crate::ai::agent::tool::DynTool;
 use crate::ai::agent::tool::remote::RemoteProxy;
 use crate::ai::agent::tool::result::CallOutput;
@@ -20,8 +25,9 @@ use crate::ai::agent::tool::result::ExecutionError;
 use crate::ai::resolver::IResolver;
 use crate::ai::resolver::action::Action;
 use crate::ai::resolver::action::Reason;
+use crate::ai::resolver::context::AnnotatedMessage;
 use crate::ai::resolver::context::Context;
-use crate::ai::resolver::message::{IMessage, MessageRef};
+use crate::ai::resolver::message::{IMessage, MessageOwned, MessageRef};
 use crate::ai::resolver::tool::IToolCall;
 
 pub use plugin::IAgentPlugin;
@@ -395,6 +401,49 @@ where
     }
 }
 
+/// Build the rendered system prompt from base sections + plugin sub-sections
+/// and inject it as `messages[0]` in the context.  A no-op when there are no
+/// sections at all.
+fn inject_system_message<M, A>(
+    context: &mut Context<M, A>,
+    title: String,
+    mut sections: Vec<SystemPromptSection>,
+    mut plugin_subsections: Vec<SystemPromptSubSection>,
+) where
+    M: IMessage + Send + Sync + 'static,
+    A: Default + Send + Sync + 'static,
+{
+    if title.is_empty() && sections.is_empty() && plugin_subsections.is_empty() {
+        return;
+    }
+
+    if !plugin_subsections.is_empty() {
+        sections.push(SystemPromptSection::new(
+            "插件说明".into(),
+            SectionContent::SubSections(std::mem::take(&mut plugin_subsections)),
+        ));
+    }
+
+    let rendered = SystemPrompt::new(title, sections).render();
+    if rendered.is_empty() || rendered == "\n" {
+        return;
+    }
+
+    let system_message = M::from(MessageOwned::System { content: rendered });
+
+    let mut annotated = context.take_annotated_messages();
+    match annotated.first() {
+        Some(first) if matches!(first.message.message_ref(), MessageRef::System { .. }) => {
+            annotated[0] = AnnotatedMessage::new(system_message, A::default());
+        }
+        _ => {
+            annotated.insert(0, AnnotatedMessage::new(system_message, A::default()));
+        }
+    }
+
+    context.set_annotated_messages(annotated);
+}
+
 pub struct AgentBuilder<M, R, S = (), A = ()>
 where
     S: Send + Sync + 'static,
@@ -409,6 +458,10 @@ where
     remote_proxy: Option<RemoteProxy>,
     compact: Option<DynCompact<M, S, A>>,
     interceptors: Vec<DynInterceptor<S, M, A>>,
+    prompt_title: Option<String>,
+    prompt_sections: Vec<SystemPromptSection>,
+    /// Plugin-contributed sub-sections, collected during `.plugin()` calls.
+    plugin_subsections: Vec<SystemPromptSubSection>,
 }
 
 impl<M, R, S, A> AgentBuilder<M, R, S, A>
@@ -439,12 +492,10 @@ where
             remote_proxy: None,
             compact: None,
             interceptors: Vec::new(),
+            prompt_title: None,
+            prompt_sections: Vec::new(),
+            plugin_subsections: Vec::new(),
         }
-    }
-
-    pub fn tools(mut self, tools: Vec<DynTool>) -> Self {
-        self.tools = tools;
-        self
     }
 
     pub fn compact<C>(mut self, compact: C) -> Self
@@ -460,15 +511,27 @@ where
         self
     }
 
-    pub fn interceptor<I>(mut self, interceptor: I) -> Self
-    where
-        I: IInterceptor<S, M, A> + 'static,
-    {
-        self.interceptors.push(Box::new(interceptor));
+    /// Set the `#` title and `##`-level sections for the system prompt.
+    /// Plugin-contributed sub-sections will be appended under a `## 插件说明`
+    /// group during `build()`.
+    pub fn base_system_sections(
+        mut self,
+        title: String,
+        sections: Vec<SystemPromptSection>,
+    ) -> Self {
+        self.prompt_title = Some(title);
+        self.prompt_sections = sections;
         self
     }
 
-    pub fn build(self) -> Agent<M, R, S, A> {
+    pub fn build(mut self) -> Agent<M, R, S, A> {
+        inject_system_message(
+            &mut self.context,
+            self.prompt_title.take().unwrap_or_default(),
+            std::mem::take(&mut self.prompt_sections),
+            std::mem::take(&mut self.plugin_subsections),
+        );
+
         let mut agent = Agent::from_context(self.state, self.context, self.resolver);
 
         agent.compact = self.compact;
@@ -485,6 +548,9 @@ where
     {
         self.tools.extend(plugin.tools());
         self.interceptors.extend(plugin.interceptors());
+        if let Some(sub) = plugin.system_prompt() {
+            self.plugin_subsections.push(sub);
+        }
         self
     }
 }
@@ -510,6 +576,57 @@ mod tests {
     use openai_oxide::types::chat::ChatCompletionMessageParam;
     use openai_oxide::types::chat::ToolCall as OxToolCall;
     use openai_oxide::types::chat::UserContent;
+
+    /// Minimal plugin that holds tools and/or interceptors for testing.
+    struct TestPlugin<M, S, A>
+    where
+        M: IMessage + Send + Sync + 'static,
+        S: Send + Sync + 'static,
+        A: Default + Send + Sync + 'static,
+    {
+        tools: Vec<DynTool>,
+        interceptors: Vec<DynInterceptor<S, M, A>>,
+    }
+
+    impl<M, S, A> TestPlugin<M, S, A>
+    where
+        M: IMessage + Send + Sync + 'static,
+        S: Send + Sync + 'static,
+        A: Default + Send + Sync + 'static,
+    {
+        fn from_interceptor<I>(i: I) -> Self
+        where
+            I: IInterceptor<S, M, A> + 'static,
+        {
+            Self {
+                tools: Vec::new(),
+                interceptors: vec![Box::new(i)],
+            }
+        }
+
+        fn from_tools(tools: Vec<DynTool>) -> Self {
+            Self {
+                tools,
+                interceptors: Vec::new(),
+            }
+        }
+    }
+
+    impl<M, R, S, A> IAgentPlugin<M, R, S, A> for TestPlugin<M, S, A>
+    where
+        M: IMessage + Send + Sync + 'static,
+        R: IResolver<Message = M> + Send,
+        S: Send + Sync + 'static,
+        A: Default + Send + Sync + 'static,
+    {
+        fn tools(&mut self) -> Vec<DynTool> {
+            std::mem::take(&mut self.tools)
+        }
+
+        fn interceptors(&mut self) -> Vec<DynInterceptor<S, M, A>> {
+            std::mem::take(&mut self.interceptors)
+        }
+    }
 
     struct CountingResolver {
         calls: Arc<AtomicUsize>,
@@ -608,7 +725,7 @@ mod tests {
         let cx = ContextBuilder::new("test-model").build();
 
         let mut agent = AgentBuilder::<_, _, (), ()>::new(cx, resolver)
-            .interceptor(StopBeforeEvaluate)
+            .plugin(TestPlugin::from_interceptor(StopBeforeEvaluate))
             .build();
 
         let result = agent
@@ -632,7 +749,7 @@ mod tests {
         let cx = ContextBuilder::new("test-model").build();
 
         let mut agent = AgentBuilder::<_, _, (), ()>::new(cx, resolver)
-            .interceptor(RewriteOutput)
+            .plugin(TestPlugin::from_interceptor(RewriteOutput))
             .build();
 
         let result = agent
@@ -655,7 +772,7 @@ mod tests {
         let cx = ContextBuilder::new("test-model").build();
 
         let mut agent = AgentBuilder::new_with_state(TestState::default(), cx, resolver)
-            .interceptor(CountAfterEvaluate)
+            .plugin(TestPlugin::from_interceptor(CountAfterEvaluate))
             .build();
 
         let result = agent
@@ -734,10 +851,10 @@ mod tests {
             .build();
 
         let mut agent = AgentBuilder::<_, _, (), ()>::new(cx, resolver)
-            .tools(vec![
+            .plugin(TestPlugin::from_tools(vec![
                 Box::new(CreateFileTool::new(output_dir.clone())),
                 Box::new(ReadFileTool::new(output_dir)),
-            ])
+            ]))
             .build();
 
         let result = agent.evaluate(user_message).await;

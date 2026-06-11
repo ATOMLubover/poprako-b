@@ -6,7 +6,9 @@ use std::time::{Duration, SystemTime};
 use serde::Deserialize;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
-use crate::ai::resolver::message::{SystemItem, SystemMessage};
+use crate::ai::agent::prompt::{
+    SectionContent, SystemPrompt, SystemPromptSection,
+};
 use crate::bot::agent::memory_dir;
 
 // ---------------------------------------------------------------------------
@@ -158,12 +160,13 @@ fn watched_paths(manifest: &Manifest) -> Vec<PathBuf> {
 // System message assembly
 // ---------------------------------------------------------------------------
 
-/// Load enabled embedded sections from the manifest and build a `SystemMessage`.
+/// Load enabled embedded sections from the manifest and build a `SystemPrompt`.
+/// Each section becomes a `##`-level section with a plain text body.
 /// Reads manifest and text files from `dir`.
-fn system_message(dir: &Path) -> anyhow::Result<SystemMessage> {
+pub fn system_prompt_from_dir(dir: &Path) -> anyhow::Result<SystemPrompt> {
     let manifest = load_manifest(dir)?;
 
-    let mut embedded = Vec::with_capacity(manifest.embedded.len());
+    let mut sections = Vec::with_capacity(manifest.embedded.len());
     for entry in &manifest.embedded {
         if !entry.enabled {
             continue;
@@ -177,29 +180,35 @@ fn system_message(dir: &Path) -> anyhow::Result<SystemMessage> {
             )
         })?;
 
-        // Validate early: no </section> in raw content.
-        if content.contains("</section>") {
-            anyhow::bail!(
-                "prompt file '{}' (section '{}') contains forbidden </section> tag",
-                file_path.display(),
-                entry.id,
-            );
+        // Reject markdown headings in body — they would conflict with
+        // the `#`/`##`/`###` structure produced by SystemPrompt::render().
+        for line in content.lines() {
+            let trimmed = line.trim_start();
+            if trimmed.starts_with("# ") || trimmed.starts_with("## ") || trimmed.starts_with("### ") {
+                anyhow::bail!(
+                    "prompt file '{}' (section '{}') contains a markdown \
+                     heading ('{}') that would conflict with system prompt \
+                     section rendering",
+                    file_path.display(),
+                    entry.id,
+                    trimmed.split_at(trimmed.find(' ').unwrap_or(trimmed.len())).0,
+                );
+            }
         }
 
-        embedded.push(SystemItem {
-            id: entry.id.clone(),
-            title: entry.title.clone(),
-            content,
-        });
+        sections.push(SystemPromptSection::new(
+            entry.title.clone(),
+            SectionContent::Body(content),
+        ));
     }
 
-    Ok(SystemMessage::new(embedded, Vec::new()))
+    Ok(SystemPrompt::new("白杨子指导".into(), sections))
 }
 
-/// Legacy entrypoint: assemble the full system prompt as a rendered XML string.
-/// Kept for backward compatibility with callers that expect a `String`.
+/// Legacy entrypoint: assemble the full system prompt as a rendered markdown
+/// string.  Kept for backward compatibility (e.g. the watchdog).
 pub fn system_prompt() -> anyhow::Result<String> {
-    Ok(system_message(&prompts_dir())?.render())
+    Ok(system_prompt_from_dir(&prompts_dir())?.render())
 }
 
 // ---------------------------------------------------------------------------
@@ -317,7 +326,7 @@ mod tests {
         (tmp, prompts)
     }
 
-    // -- system_message_from (path-parameterised) --
+    // -- system_prompt_from_dir --
 
     #[test]
     fn test_disabled_section_not_in_output() {
@@ -340,12 +349,13 @@ plugins: []
 "#,
         );
 
-        let sm = system_message(&prompts).unwrap();
-        let rendered = sm.render();
+        let prompt = system_prompt_from_dir(&prompts).unwrap();
+        let rendered = prompt.render();
 
         assert!(rendered.contains("enabled content"));
         assert!(!rendered.contains("disabled content"));
         assert!(!rendered.contains("Disabled"));
+        assert!(rendered.starts_with("# 白杨子指导\n"));
     }
 
     #[test]
@@ -362,7 +372,7 @@ plugins: []
 "#,
         );
 
-        let result = system_message(&prompts);
+        let result = system_prompt_from_dir(&prompts);
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(
@@ -372,9 +382,9 @@ plugins: []
     }
 
     #[test]
-    fn test_forbidden_section_close_tag_returns_error() {
+    fn test_forbidden_markdown_heading_returns_error() {
         let (_tmp, prompts) = setup(
-            &[("bad.txt", "content with </section> inside")],
+            &[("bad.txt", "some text\n## Bad heading\nmore text")],
             r#"
 embedded:
   - id: bad
@@ -385,12 +395,12 @@ plugins: []
 "#,
         );
 
-        let result = system_message(&prompts);
+        let result = system_prompt_from_dir(&prompts);
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(
-            err.contains("</section>"),
-            "error should mention forbidden tag: {err}"
+            err.contains("markdown"),
+            "error should mention markdown heading conflict: {err}"
         );
     }
 
@@ -415,19 +425,20 @@ plugins: []
 "#,
         );
 
-        let sm = system_message(&prompts).unwrap();
-        let prompt = sm.render();
+        let prompt = system_prompt_from_dir(&prompts).unwrap();
+        let rendered = prompt.render();
 
-        assert!(prompt.contains("I am a bot."));
-        assert!(prompt.contains("You are in a chat room."));
-        assert!(prompt.starts_with("<system>"));
-        assert!(prompt.ends_with("</system>"));
+        assert!(rendered.contains("I am a bot."));
+        assert!(rendered.contains("You are in a chat room."));
+        assert!(rendered.starts_with("# 白杨子指导\n"));
+        assert!(rendered.contains("## Persona\n"));
+        assert!(rendered.contains("## Scene\n"));
     }
 
     #[test]
-    fn test_embedded_before_plugins_in_system_prompt() {
+    fn test_sections_are_h2_directly() {
         let (_tmp, prompts) = setup(
-            &[("e.txt", "embedded")],
+            &[("e.txt", "some body")],
             r#"
 embedded:
   - id: e
@@ -438,11 +449,14 @@ plugins: []
 "#,
         );
 
-        let sm = system_message(&prompts).unwrap();
-        let prompt = sm.render();
-        let _emb_pos = prompt.find("<embedded>").unwrap();
-        assert!(prompt.contains("<embedded>"));
-        // No <plugins> block expected since v1 has no plugin sections.
+        let prompt = system_prompt_from_dir(&prompts).unwrap();
+        let rendered = prompt.render();
+
+        // Each file section is a ## directly.
+        assert!(rendered.contains("## Emb"));
+        assert!(rendered.contains("some body"));
+        // No grouping wrapper.
+        assert!(!rendered.contains("## 嵌入式"));
     }
 
     #[test]
@@ -456,12 +470,14 @@ plugins: []
             std::fs::write(prompts.join(&entry.path), format!("{} content", entry.id)).unwrap();
         }
 
-        let sm = system_message(&prompts).expect("should fall back to default manifest");
-        let rendered = sm.render();
+        let prompt =
+            system_prompt_from_dir(&prompts).expect("should fall back to default manifest");
+        let rendered = prompt.render();
 
-        assert!(rendered.contains("<section id=\"persona\""));
+        assert!(rendered.starts_with("# 白杨子指导\n"));
+        assert!(rendered.contains("## 角色身份"));
         assert!(rendered.contains("persona content"));
-        assert!(rendered.contains("<section id=\"examples\""));
+        assert!(rendered.contains("## 对话示例"));
         assert!(rendered.contains("examples content"));
     }
 

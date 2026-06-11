@@ -1,8 +1,9 @@
 pub mod embedded_local;
 
+use crate::ai::agent::prompt::SystemPromptSubSection;
 use crate::ai::agent::{interceptor::DynInterceptor, tool::DynTool};
 use crate::ai::resolver::IResolver;
-use crate::ai::resolver::message::{IMessage, PluginSystemItem};
+use crate::ai::resolver::message::IMessage;
 
 pub trait IAgentPlugin<M, R, S, A>
 where
@@ -12,7 +13,7 @@ where
     A: Default + Send + Sync + 'static,
 {
     /// Generates a system prompt for the agent about this plugin.
-    fn system_prompt(&self) -> Option<PluginSystemItem> {
+    fn system_prompt(&self) -> Option<SystemPromptSubSection> {
         None
     }
 

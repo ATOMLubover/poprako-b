@@ -15,7 +15,7 @@ use crate::ai::resolver::context::ContextBuilder;
 use crate::ai::resolver::message::MessageOwned;
 use crate::ai::resolver_impl::deepseek::DeepSeekResolver;
 use crate::ai::resolver_impl::deepseek::data_object::DeepSeekMessage;
-use crate::bot::agent::prompt::system_prompt;
+use crate::bot::agent::prompt::system_prompt_from_dir;
 use crate::bot::message::ChannelMessage;
 use plugin::inspiration::{BotCompact, inspiration_plugin};
 use plugin::prks::prks_plugin_from_env;
@@ -39,24 +39,21 @@ impl BotAgent {
     pub async fn new() -> anyhow::Result<Self> {
         let resolver = DeepSeekResolver::from_env();
 
-        let system_prompt = system_prompt()?;
-
         let remote_proxy = RemoteProxy::from_local_config().await.ok();
         let memory_dir = memory_dir();
+        let prompts_dir = memory_dir.join("prompts");
+        let base_prompt = system_prompt_from_dir(&prompts_dir)?;
+        let prompt_title = base_prompt.title().to_string();
+        let prompt_sections = base_prompt.into_sections();
 
-        let context = ContextBuilder::<DeepSeekMessage, BotMessageAnnotation>::new(MODEL_NAME)
-            .messages(vec![
-                MessageOwned::System {
-                    content: system_prompt,
-                }
-                .into(),
-            ])
-            .build();
+        let context =
+            ContextBuilder::<DeepSeekMessage, BotMessageAnnotation>::new(MODEL_NAME).build();
 
         let prks_plugin = prks_plugin_from_env().await;
 
         let agent =
             DeepSeekAgentBuilder::new_with_state(BotAgentState::default(), context, resolver)
+                .base_system_sections(prompt_title, prompt_sections)
                 .remote_proxy(remote_proxy)
                 .compact(BotCompact::default())
                 .plugin(websearch_plugin())
