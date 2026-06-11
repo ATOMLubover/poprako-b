@@ -57,5 +57,5 @@ async fn main() -> Result<()> {
     let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
     init_tracing(env_filter);
 
-    poprako_b_preview::bot::run_server().await
+    poprako_b_preview::bot::run_bot().await
 }

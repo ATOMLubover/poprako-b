@@ -1,5 +1,4 @@
 pub mod config;
-mod handler;
 mod onebot;
 
 use anyhow::Context as _;
@@ -8,34 +7,69 @@ use onebot_v11::connect::ws_reverse::ReverseWsConnect;
 use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::mpsc;
 
-use crate::bot::message::BotCommand;
-use crate::bot::message::ChannelMessage;
+use crate::bot::app::BotApp;
+use crate::bot::event::BotEvent;
 use crate::bot::server::config::ReverseWebSockServerConfig;
-use crate::bot::server::handler::ChannelHandlerBox;
-use crate::bot::server::handler::Notice;
-use crate::bot::server::handler::NoticeHandlerBox;
-use crate::bot::server::handler::WatchBox;
-use crate::bot::server::handler::WatchPair;
 use crate::bot::server::onebot::OneBotSender;
 use crate::bot::server::onebot::channel_message_from_event;
-use crate::bot::state::BotState;
+
+trait EventSource: Send {
+    fn spawn(self: Box<Self>, send: mpsc::Sender<BotEvent>) -> anyhow::Result<()>;
+}
+
+type EventSourceBox = Box<dyn EventSource>;
+
+struct ReceiverEventSource<N, S, F> {
+    source: S,
+    map: F,
+    kind: std::marker::PhantomData<fn(N)>,
+}
+
+impl<N, S, F> ReceiverEventSource<N, S, F> {
+    fn new(source: S, map: F) -> Self {
+        Self {
+            source,
+            map,
+            kind: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<N, S, F> EventSource for ReceiverEventSource<N, S, F>
+where
+    N: Send + 'static,
+    S: FnOnce() -> anyhow::Result<mpsc::Receiver<N>> + Send + 'static,
+    F: Fn(N) -> BotEvent + Send + 'static,
+{
+    fn spawn(self: Box<Self>, send: mpsc::Sender<BotEvent>) -> anyhow::Result<()> {
+        let Self { source, map, .. } = *self;
+        let mut recv = source()?;
+
+        tokio::spawn(async move {
+            while let Some(body) = recv.recv().await {
+                if send.send(map(body)).await.is_err() {
+                    tracing::warn!("bot event bus dropped, event source forwarder exiting");
+                    break;
+                }
+            }
+        });
+
+        Ok(())
+    }
+}
 
 pub struct BotServer {
-    state: BotState,
+    app: BotApp,
     onebot_config: Option<ReverseWebSockServerConfig>,
-    channel_handler: Option<ChannelHandlerBox>,
-    watches: Vec<WatchBox>,
-    notice_handlers: Vec<NoticeHandlerBox>,
+    event_sources: Vec<EventSourceBox>,
 }
 
 impl BotServer {
-    pub fn new(state: BotState) -> Self {
+    pub fn new(app: BotApp) -> Self {
         Self {
-            state,
+            app,
             onebot_config: None,
-            channel_handler: None,
-            watches: Vec::new(),
-            notice_handlers: Vec::new(),
+            event_sources: Vec::new(),
         }
     }
 
@@ -48,23 +82,14 @@ impl BotServer {
         self
     }
 
-    pub fn on_channel_message<F>(mut self, handler: F) -> Self
-    where
-        F: for<'a> AsyncFn(&'a mut BotState, ChannelMessage) -> Vec<BotCommand> + Send + 'static,
-    {
-        self.channel_handler = Some(Box::new(handler));
-        self
-    }
-
-    pub fn on_notice<N, S, H>(mut self, source: S, handler: H) -> Self
+    pub fn on_event_source<N, S, F>(mut self, source: S, map: F) -> Self
     where
         N: Send + 'static,
         S: FnOnce() -> anyhow::Result<mpsc::Receiver<N>> + Send + 'static,
-        H: for<'a> AsyncFn(&'a mut BotState, N) -> Vec<BotCommand> + Send + 'static,
+        F: Fn(N) -> BotEvent + Send + 'static,
     {
-        let pair = WatchPair::new(source, handler);
-        self.watches.push(pair.watch);
-        self.notice_handlers.push(pair.handler);
+        self.event_sources
+            .push(Box::new(ReceiverEventSource::new(source, map)));
         self
     }
 
@@ -76,27 +101,28 @@ impl BotServer {
 
         let connect = ReverseWsConnect::new(config.into()).await?;
         let sender = OneBotSender::new(connect.clone());
-        let mut event_recv = connect.subscribe().await;
-        let (notice_send, mut notice_recv) = mpsc::channel::<Notice>(32);
+        let mut onebot_event_recv = connect.subscribe().await;
 
-        for (index, watch) in self.watches.drain(..).enumerate() {
-            watch.spawn(index, notice_send.clone())?;
+        let (source_event_send, mut source_event_recv) = mpsc::channel::<BotEvent>(32);
+
+        for source in self.event_sources.drain(..) {
+            source.spawn(source_event_send.clone())?;
         }
 
-        drop(notice_send);
+        drop(source_event_send);
 
-        let mut notices_closed = false;
+        let mut sources_closed = false;
         loop {
             tokio::select! {
-                event = event_recv.recv() => {
+                event = onebot_event_recv.recv() => {
                     self.handle_onebot_event(event, &sender).await;
                 }
-                notice = notice_recv.recv(), if !notices_closed => {
-                    match notice {
-                        Some(notice) => self.handle_notice(notice, &sender).await,
+                event = source_event_recv.recv(), if !sources_closed => {
+                    match event {
+                        Some(event) => self.handle_bot_event(event, &sender).await,
                         None => {
-                            notices_closed = true;
-                            tracing::warn!("all notice sources stopped");
+                            sources_closed = true;
+                            tracing::warn!("all bot event sources stopped");
                         }
                     }
                 }
@@ -113,21 +139,14 @@ impl BotServer {
             return;
         };
 
-        let Some(handler) = self.channel_handler.as_ref() else {
-            return;
-        };
-
-        let commands = handler.call(&mut self.state, message).await;
-        sender.send_batch(commands, true).await;
+        self.handle_bot_event(BotEvent::ChannelMessage(message), sender)
+            .await;
     }
 
-    async fn handle_notice(&mut self, notice: Notice, sender: &OneBotSender) {
-        let Some(handler) = self.notice_handlers.get(notice.index) else {
-            tracing::warn!("missing notice handler for index {}", notice.index);
-            return;
-        };
+    async fn handle_bot_event(&mut self, event: BotEvent, sender: &OneBotSender) {
+        let delayed = event.should_delay_response();
+        let commands = self.app.handle(event).await;
 
-        let commands = handler.call(&mut self.state, notice.body).await;
-        sender.send_batch(commands, false).await;
+        sender.send_batch(commands, delayed).await;
     }
 }

@@ -7,10 +7,7 @@ mod tool;
 use std::path::PathBuf;
 
 use crate::ai::agent::plugin::embedded_local::memory_shard::memory_shard_plugin;
-use plugin::inspiration::{BotCompact, inspiration_plugin};
-use state::{BotAgentState, BotMessageAnnotation};
-use tool::build_tools;
-
+use crate::ai::agent::plugin::embedded_local::websearch::websearch_plugin;
 use crate::ai::agent::tool::remote::RemoteProxy;
 use crate::ai::agent_impl::deepseek::DeepSeekAgent;
 use crate::ai::agent_impl::deepseek::DeepSeekAgentBuilder;
@@ -20,6 +17,9 @@ use crate::ai::resolver_impl::deepseek::DeepSeekResolver;
 use crate::ai::resolver_impl::deepseek::data_object::DeepSeekMessage;
 use crate::bot::agent::prompt::system_prompt;
 use crate::bot::message::ChannelMessage;
+use plugin::inspiration::{BotCompact, inspiration_plugin};
+use plugin::prks::prks_plugin_from_env;
+use state::{BotAgentState, BotMessageAnnotation};
 
 pub fn memory_dir() -> PathBuf {
     std::env::var("MEMORY_DIR")
@@ -41,8 +41,8 @@ impl BotAgent {
 
         let system_prompt = system_prompt()?;
 
-        let tools = build_tools().await;
         let remote_proxy = RemoteProxy::from_local_config().await.ok();
+        let memory_dir = memory_dir();
 
         let context = ContextBuilder::<DeepSeekMessage, BotMessageAnnotation>::new(MODEL_NAME)
             .messages(vec![
@@ -53,13 +53,16 @@ impl BotAgent {
             ])
             .build();
 
+        let prks_plugin = prks_plugin_from_env().await;
+
         let agent =
             DeepSeekAgentBuilder::new_with_state(BotAgentState::default(), context, resolver)
-                .tools(tools)
                 .remote_proxy(remote_proxy)
                 .compact(BotCompact::default())
-                .plugin(inspiration_plugin(memory_dir())?)
-                .plugin(memory_shard_plugin(memory_dir()))
+                .plugin(websearch_plugin())
+                .plugin(prks_plugin)
+                .plugin(inspiration_plugin(memory_dir.clone())?)
+                .plugin(memory_shard_plugin(memory_dir))
                 .build();
 
         Ok(Self { agent })
@@ -81,20 +84,6 @@ impl BotAgent {
         .into();
 
         self.agent.evaluate(user_message).await
-    }
-}
-
-#[cfg(test)]
-impl BotAgent {
-    pub fn new_for_test() -> Self {
-        let resolver = DeepSeekResolver::from_env();
-        let context =
-            ContextBuilder::<DeepSeekMessage, BotMessageAnnotation>::new("test-model").build();
-        let agent =
-            DeepSeekAgentBuilder::new_with_state(BotAgentState::default(), context, resolver)
-                .build();
-
-        Self { agent }
     }
 }
 
