@@ -1,11 +1,14 @@
 use serde::Deserialize;
 use tokio::sync::mpsc;
 
+use crate::ai::agent::tool::embedded_local::memory::ListMemoryShardsTool;
+use crate::ai::agent::tool::DynTool;
 use crate::ai::agent_impl::deepseek::DeepSeekAgentBuilder;
 use crate::ai::resolver::context::Context;
 use crate::ai::resolver::message::MessageOwned;
 use crate::ai::resolver_impl::deepseek::DeepSeekResolver;
 use crate::ai::resolver_impl::deepseek::data_object::DeepSeekMessage;
+use crate::bot::agent::memory_dir;
 use crate::bot::event::ReviewFollowupEvent;
 
 pub fn reviewer_system_prompt(respond_id: &str) -> String {
@@ -66,7 +69,9 @@ pub async fn run_reviewer(
     cx.set_system_message(MessageOwned::System { content: system_prompt }.into());
 
     let resolver = DeepSeekResolver::from_env();
-    let mut agent = DeepSeekAgentBuilder::<(), _>::new(cx, resolver).build();
+    let mut agent = DeepSeekAgentBuilder::<(), _>::new(cx, resolver)
+        .append_tools(vec![Box::new(ListMemoryShardsTool::new(memory_dir())) as DynTool])
+        .build();
     let user_message = MessageOwned::User { content: "审视上一轮回答".into() }.into();
 
     let Some(output) = agent.evaluate(user_message).await else {

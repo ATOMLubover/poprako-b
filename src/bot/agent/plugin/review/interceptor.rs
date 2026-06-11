@@ -66,8 +66,8 @@ pub struct ReviewInterceptor {
 impl ReviewInterceptor {
     pub fn new() -> Self {
         Self {
-            // FIXME: Change to 50%.
-            sample: || rand::thread_rng().gen_ratio(2, 2),
+            // TODO: Maybe modify the sampling strategy?
+            sample: || rand::thread_rng().gen_ratio(1, 2),
         }
     }
 
