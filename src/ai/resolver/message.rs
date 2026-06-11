@@ -1,5 +1,20 @@
+use serde::Serialize;
+
 use crate::ai::resolver::action::Action;
 use crate::ai::resolver::tool::IToolCall;
+
+#[derive(Serialize)]
+pub struct PluginSystemItem {}
+
+#[derive(Serialize)]
+pub struct EmbeddedSystemItem {}
+
+fn formatted_system_string(
+    embedded: Vec<EmbeddedSystemItem>,
+    plugins: Vec<PluginSystemItem>,
+) -> String {
+    todo!()
+}
 
 #[derive(Debug)]
 pub enum MessageRef<'a, C>
@@ -42,6 +57,20 @@ where
         tool_call_id: String,
         content: String,
     },
+}
+
+impl<C> MessageOwned<C>
+where
+    C: IToolCall,
+{
+    pub fn formatted_system(
+        embedded: Vec<EmbeddedSystemItem>,
+        plugins: Vec<PluginSystemItem>,
+    ) -> Self {
+        MessageOwned::System {
+            content: formatted_system_string(embedded, plugins),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

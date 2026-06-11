@@ -4,14 +4,11 @@ mod prompt;
 mod state;
 mod tool;
 
-use std::collections::HashMap;
 use std::path::PathBuf;
 
 use crate::ai::agent::plugin::embedded_local::memory_shard::memory_shard_plugin;
-use plugin::inspiration::BotCompact;
-use plugin::inspiration::inspiration_plugin;
-use state::BotAgentState;
-use state::BotMessageAnnotation;
+use plugin::inspiration::{BotCompact, inspiration_plugin};
+use state::{BotAgentState, BotMessageAnnotation};
 use tool::build_tools;
 
 use crate::ai::agent::tool::remote::RemoteProxy;
