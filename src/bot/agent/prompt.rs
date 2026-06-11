@@ -106,6 +106,7 @@ fn prompts_dir() -> PathBuf {
     memory_dir().join("prompts")
 }
 
+// FIXME: bad naming.
 fn manifest_path_in(dir: &Path) -> PathBuf {
     dir.join("system.yaml")
 }
