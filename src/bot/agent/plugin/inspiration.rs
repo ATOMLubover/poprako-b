@@ -48,19 +48,14 @@ mod tests {
 
     use crate::ai::agent::compact::ICompact;
     use crate::ai::agent::interceptor::IInterceptor;
-    use crate::ai::resolver::context::AnnotatedMessage;
-    use crate::ai::resolver::context::ContextBuilder;
-    use crate::ai::resolver::message::IMessage;
-    use crate::ai::resolver::message::MessageRef;
-    use crate::bot::agent::plugin::inspiration::annotation::IInspirationAnnotated;
-    use crate::bot::agent::plugin::inspiration::annotation::InspiredAnnotation;
+    use crate::ai::resolver::context::{AnnotatedMessage, ContextBuilder};
+    use crate::ai::resolver::message::{IMessage, MessageRef};
+    use crate::bot::agent::plugin::inspiration::annotation::{IInspirationAnnotated, InspiredAnnotation};
     use crate::bot::agent::plugin::inspiration::compact::BotCompact;
     use crate::bot::agent::plugin::inspiration::interceptor::InspirationInterceptor;
-    use crate::bot::agent::plugin::inspiration::knowledge::KnowledgeEntry;
-    use crate::bot::agent::plugin::inspiration::knowledge::KnowledgeRegistry;
+    use crate::bot::agent::plugin::inspiration::knowledge::{KnowledgeEntry, KnowledgeRegistry};
     use crate::bot::agent::plugin::inspiration::state::IInspirationEmbedded;
-    use crate::bot::agent::state::BotAgentState;
-    use crate::bot::agent::state::BotMessageAnnotation;
+    use crate::bot::agent::state::{BotAgentState, BotMessageAnnotation};
 
     fn user(content: &str) -> ChatCompletionMessageParam {
         MessageRef::User { content }.into()

@@ -1,7 +1,8 @@
 pub mod embedded_local;
 
+use crate::ai::agent::interceptor::DynInterceptor;
 use crate::ai::agent::prompt::SystemPromptSubSection;
-use crate::ai::agent::{interceptor::DynInterceptor, tool::DynTool};
+use crate::ai::agent::tool::DynTool;
 use crate::ai::resolver::IResolver;
 use crate::ai::resolver::message::IMessage;
 

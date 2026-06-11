@@ -3,8 +3,7 @@ pub use client::PrksClient;
 
 use std::sync::Arc;
 
-use serde::Deserialize;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::ai::agent::tool::ITool;
 use crate::ai::agent::tool::result::{ExecutionError, ExecutionResult};

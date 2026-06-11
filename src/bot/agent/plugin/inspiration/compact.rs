@@ -2,8 +2,7 @@ use std::collections::HashSet;
 
 use async_trait::async_trait;
 
-use crate::ai::agent::compact::ICompact;
-use crate::ai::agent::compact::SlidingWindowCompact;
+use crate::ai::agent::compact::{ICompact, SlidingWindowCompact};
 use crate::ai::resolver::context::Context;
 use crate::ai::resolver::message::IMessage;
 use crate::bot::agent::plugin::inspiration::annotation::IInspirationAnnotated;

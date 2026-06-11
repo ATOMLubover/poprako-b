@@ -1,10 +1,6 @@
-use crate::bot::event::BotEvent;
+use crate::bot::event::{BotEvent, ReviewFollowupEvent};
 use crate::bot::keepalive::KeepaliveTrigger;
-use crate::bot::message::BotCommand;
-use crate::bot::message::ChannelMessage;
-use crate::bot::message::ImageData;
-use crate::bot::message::MessageContent;
-use crate::bot::message::MessagePart;
+use crate::bot::message::{BotCommand, ChannelMessage, ImageData, MessageContent, MessagePart};
 use crate::bot::policy::repeat::try_repeat;
 use crate::bot::policy::reply::split_reply_to_command;
 use crate::bot::policy::trigger::extract_user_text;
@@ -17,6 +13,24 @@ fn image_content(image_base64: String) -> MessageContent {
             data: ImageData::Base64(image_base64),
         }],
     }
+}
+
+fn respond_id(msg: &ChannelMessage, user_text: &str) -> String {
+    use sha2::Digest;
+
+    let mut hasher = sha2::Sha256::new();
+    hasher.update(msg.channel_id.as_bytes());
+    hasher.update(b"\0");
+    hasher.update(msg.message_id.as_bytes());
+    hasher.update(b"\0");
+    hasher.update(msg.actor.id.as_bytes());
+    hasher.update(b"\0");
+    hasher.update(msg.sent_at.to_string().as_bytes());
+    hasher.update(b"\0");
+    hasher.update(user_text.as_bytes());
+
+    let hash = hasher.finalize();
+    format!("#{:02x}{:02x}{:02x}", hash[0], hash[1], hash[2])
 }
 
 pub struct BotApp {
@@ -34,6 +48,7 @@ impl BotApp {
             BotEvent::SystemPromptRefresh(content) => self.handle_system_prompt_refresh(content),
             BotEvent::ScheduledSpam(trigger) => self.handle_scheduled_spam_trigger(trigger),
             BotEvent::Keepalive(trigger) => self.handle_keepalive_trigger(trigger),
+            BotEvent::ReviewFollowup(event) => self.handle_review_followup(event).await,
         }
     }
 
@@ -72,17 +87,31 @@ impl BotApp {
             user_text
         };
 
+        let respond_id = respond_id(&msg, &user_text);
         let reply_target = msg.reply_target();
         let channel_id = msg.channel_id.clone();
 
         let text = self
             .state
             .agent_mut()
-            .respond(msg, user_text)
+            .respond(msg, user_text, respond_id)
             .await
             .unwrap_or_else(|| "X﹏X 白杨子可能出现了点问题，无法回答这个问题哦".to_string());
 
         split_reply_to_command(reply_target, channel_id, text)
+    }
+
+    async fn handle_review_followup(&mut self, event: ReviewFollowupEvent) -> Vec<BotCommand> {
+        let channel_id = event.channel_id.clone();
+        let Some(text) = self.state.agent_mut().respond_review_feedback(event).await else {
+            return Vec::new();
+        };
+
+        text.split("\n\n")
+            .map(str::trim)
+            .filter(|text| !text.is_empty())
+            .map(|chunk| BotCommand::channel_text(channel_id.clone(), chunk.to_string()))
+            .collect()
     }
 
     fn handle_system_prompt_refresh(&mut self, content: String) -> Vec<BotCommand> {

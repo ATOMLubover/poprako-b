@@ -1,15 +1,10 @@
-use openai_oxide::types::chat::ChatCompletionMessageParam;
-use openai_oxide::types::chat::FunctionCall;
-use openai_oxide::types::chat::ToolCall as OpenAiToolCall;
-use openai_oxide::types::chat::UserContent;
+use openai_oxide::types::chat::{
+    ChatCompletionMessageParam, FunctionCall, ToolCall as OpenAiToolCall, UserContent,
+};
 
-use crate::ai::resolver::context::Context;
-use crate::ai::resolver::context::ContextBuilder;
-use crate::ai::resolver::message::IMessage;
-use crate::ai::resolver::message::MessageRef;
-use crate::ai::session::persist::data_object::ContextSnapshot;
-use crate::ai::session::persist::data_object::Message;
-use crate::ai::session::persist::data_object::ToolCall;
+use crate::ai::resolver::context::{Context, ContextBuilder};
+use crate::ai::resolver::message::{IMessage, MessageRef};
+use crate::ai::session::persist::data_object::{ContextSnapshot, Message, ToolCall};
 
 pub trait IMessageSnapshotCodec<M>
 where

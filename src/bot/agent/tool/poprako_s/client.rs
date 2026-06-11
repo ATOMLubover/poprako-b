@@ -1,5 +1,4 @@
-use serde::Deserialize;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use url::Url;
 
 use crate::bot::agent::data::{Assignment, Chapter, Comic, Member, Workset};
@@ -245,13 +244,14 @@ struct HttpRes<T> {
 
 #[cfg(test)]
 mod tests {
-    use std::io::{Read, Write};
+    use super::PrksClient;
+
+    use std::io::{Read as _, Write as _};
     use std::net::TcpListener;
     use std::thread;
 
     use url::Url;
 
-    use super::PrksClient;
     use crate::http::HttpClient;
 
     fn spawn_json_server<F>(assert_request: F, status_code: u16, body: String) -> String

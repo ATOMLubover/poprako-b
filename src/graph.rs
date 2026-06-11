@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use anyhow::Context;
+use anyhow::Context as _;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct NodeIdent(String);

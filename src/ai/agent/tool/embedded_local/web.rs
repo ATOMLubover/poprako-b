@@ -555,7 +555,8 @@ mod tests {
 
 #[cfg(test)]
 mod web_fetch_integration_tests {
-    use super::*;
+    use crate::ai::agent::tool::ITool;
+    use crate::ai::agent::tool::embedded_local::web::WebFetchTool;
 
     // NOTE: httpbin.org frequently returns 503, causing flaky CI failures.
     // Re-enable when a more reliable test endpoint is available.

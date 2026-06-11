@@ -4,8 +4,7 @@ use std::path::PathBuf;
 use openai_oxide::types::chat::{ChatCompletionMessageParam, UserContent};
 
 use crate::ai::agent::plugin::IAgentPlugin;
-use crate::ai::agent::tool::DynTool;
-use crate::ai::agent::tool::ITool;
+use crate::ai::agent::tool::{DynTool, ITool};
 use crate::ai::agent::tool::embedded_local::fs::{ListFilesTool, ReadFileTool};
 use crate::ai::agent::tool::result::{ExecutionError, ExecutionResult};
 use crate::ai::agent_impl::openai::OpenAiAgentBuilder;

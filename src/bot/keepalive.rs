@@ -1,6 +1,6 @@
-use rand::Rng;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use rand::Rng as _;
 use tokio::sync::mpsc;
 use tokio::time::sleep;
 

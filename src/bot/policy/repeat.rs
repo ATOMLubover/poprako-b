@@ -49,8 +49,7 @@ mod tests {
 
     use time::OffsetDateTime;
 
-    use crate::bot::message::MessageActor;
-    use crate::bot::message::MessageContent;
+    use crate::bot::message::{MessageActor, MessageContent};
 
     fn message(raw_text: &str) -> ChannelMessage {
         ChannelMessage {

@@ -1,19 +1,12 @@
 use async_trait::async_trait;
 
-use crate::ai::agent::interceptor::IInterceptor;
-use crate::ai::agent::interceptor::InterceptorFlow;
-use crate::ai::resolver::context::AnnotatedMessage;
-use crate::ai::resolver::context::Context;
-use crate::ai::resolver::message::IMessage;
-use crate::ai::resolver::message::MessageOwned;
-use crate::ai::resolver::message::MessageRef;
-use crate::bot::agent::plugin::inspiration::annotation::IInspirationAnnotated;
-use crate::bot::agent::plugin::inspiration::annotation::InspiredAnnotation;
+use crate::ai::agent::interceptor::{IInterceptor, InterceptorFlow};
+use crate::ai::resolver::context::{AnnotatedMessage, Context};
+use crate::ai::resolver::message::{IMessage, MessageOwned, MessageRef};
+use crate::bot::agent::plugin::inspiration::annotation::{IInspirationAnnotated, InspiredAnnotation};
 use crate::bot::agent::plugin::inspiration::input::MatchInput;
-use crate::bot::agent::plugin::inspiration::knowledge::KnowledgeEntry;
-use crate::bot::agent::plugin::inspiration::knowledge::KnowledgeRegistry;
-use crate::bot::agent::plugin::inspiration::state::IInspirationEmbedded;
-use crate::bot::agent::plugin::inspiration::state::InspiredState;
+use crate::bot::agent::plugin::inspiration::knowledge::{KnowledgeEntry, KnowledgeRegistry};
+use crate::bot::agent::plugin::inspiration::state::{IInspirationEmbedded, InspiredState};
 
 fn last_user_text<M, A>(cx: &Context<M, A>) -> Option<&str>
 where

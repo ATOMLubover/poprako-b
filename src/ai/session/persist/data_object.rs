@@ -1,7 +1,5 @@
-use chrono::DateTime;
-use chrono::Utc;
-use serde::Deserialize;
-use serde::Serialize;
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 // ── Session ──────────────────────────────────────────────────────────────────
@@ -94,8 +92,7 @@ pub struct StoredMessage {
 /// Compute the SHA-256 hash of a canonical JSON payload.
 /// Used for content-addressed deduplication of messages.
 pub fn hash_message(message: &Message) -> Vec<u8> {
-    use sha2::Digest;
-    use sha2::Sha256;
+    use sha2::{Digest as _, Sha256};
 
     let canonical = serde_json::to_vec(message).expect("message serialization should not fail");
     let mut hasher = Sha256::new();

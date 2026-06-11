@@ -1,5 +1,4 @@
-use crate::bot::message::ChannelMessage;
-use crate::bot::message::MessagePart;
+use crate::bot::message::{ChannelMessage, MessagePart};
 
 fn non_empty_trimmed(text: String) -> Option<String> {
     let text = text.trim().to_string();
@@ -47,8 +46,7 @@ mod tests {
 
     use time::OffsetDateTime;
 
-    use crate::bot::message::MessageActor;
-    use crate::bot::message::MessageContent;
+    use crate::bot::message::{MessageActor, MessageContent};
 
     fn message(raw_text: &str, parts: Vec<MessagePart>) -> ChannelMessage {
         ChannelMessage {

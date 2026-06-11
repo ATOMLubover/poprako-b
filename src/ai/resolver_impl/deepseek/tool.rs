@@ -18,6 +18,7 @@ impl IToolCall for DeepSeekToolCall {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     use crate::ai::resolver_impl::deepseek::data_object::ToolCallFunction;
 
     #[test]

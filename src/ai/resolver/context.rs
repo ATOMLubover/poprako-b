@@ -1,5 +1,4 @@
-use crate::ai::resolver::message::IMessage;
-use crate::ai::resolver::message::MessageRef;
+use crate::ai::resolver::message::{IMessage, MessageRef};
 use crate::ai::resolver::tool::ToolDefination;
 
 #[derive(Debug, Clone)]
@@ -66,6 +65,7 @@ where
 /// Context for the resolver, containing the conversation history and available tools.
 /// It **owns** all messages and tools, so Agent can mutate the context by pushing or deleting
 /// new messages and tools as needed.
+#[derive(Clone)]
 pub struct Context<M, A = ()>
 where
     M: IMessage + 'static,
@@ -89,6 +89,10 @@ where
 
     pub fn annotated_messages(&self) -> &[AnnotatedMessage<M, A>] {
         self.messages.as_slice()
+    }
+
+    pub fn annotated_messages_mut(&mut self) -> &mut [AnnotatedMessage<M, A>] {
+        self.messages.as_mut_slice()
     }
 
     pub fn message_at(&self, index: usize) -> Option<&M> {

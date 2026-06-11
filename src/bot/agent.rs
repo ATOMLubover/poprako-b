@@ -6,20 +6,23 @@ mod tool;
 
 use std::path::PathBuf;
 
+use tokio::sync::mpsc;
+
 use crate::ai::agent::plugin::embedded_local::memory_shard::memory_shard_plugin;
 use crate::ai::agent::plugin::embedded_local::websearch::websearch_plugin;
 use crate::ai::agent::tool::remote::RemoteProxy;
-use crate::ai::agent_impl::deepseek::DeepSeekAgent;
-use crate::ai::agent_impl::deepseek::DeepSeekAgentBuilder;
+use crate::ai::agent_impl::deepseek::{DeepSeekAgent, DeepSeekAgentBuilder};
 use crate::ai::resolver::context::ContextBuilder;
 use crate::ai::resolver::message::MessageOwned;
 use crate::ai::resolver_impl::deepseek::DeepSeekResolver;
 use crate::ai::resolver_impl::deepseek::data_object::DeepSeekMessage;
+use crate::bot::agent::plugin::review::{review_plugin, SolveKind};
 use crate::bot::agent::prompt::system_prompt_from_dir;
+use crate::bot::event::ReviewFollowupEvent;
 use crate::bot::message::ChannelMessage;
-use plugin::inspiration::{BotCompact, inspiration_plugin};
-use plugin::prks::prks_plugin_from_env;
-use state::{BotAgentState, BotMessageAnnotation};
+use crate::bot::agent::plugin::inspiration::{BotCompact, inspiration_plugin};
+use crate::bot::agent::plugin::prks::prks_plugin_from_env;
+use crate::bot::agent::state::{BotAgentState, BotMessageAnnotation};
 
 pub fn memory_dir() -> PathBuf {
     std::env::var("MEMORY_DIR")
@@ -36,7 +39,7 @@ pub struct BotAgent {
 }
 
 impl BotAgent {
-    pub async fn new() -> anyhow::Result<Self> {
+    pub async fn new(review_event_send: mpsc::Sender<ReviewFollowupEvent>) -> anyhow::Result<Self> {
         let resolver = DeepSeekResolver::from_env();
 
         let remote_proxy = RemoteProxy::from_local_config().await.ok();
@@ -51,16 +54,19 @@ impl BotAgent {
 
         let prks_plugin = prks_plugin_from_env().await;
 
-        let agent =
-            DeepSeekAgentBuilder::new_with_state(BotAgentState::default(), context, resolver)
-                .base_system_sections(prompt_title, prompt_sections)
-                .remote_proxy(remote_proxy)
-                .compact(BotCompact::default())
-                .plugin(websearch_plugin())
-                .plugin(prks_plugin)
-                .plugin(inspiration_plugin(memory_dir.clone())?)
-                .plugin(memory_shard_plugin(memory_dir))
-                .build();
+        let mut agent_state = BotAgentState::default();
+        agent_state.set_review_event_send(review_event_send);
+
+        let agent = DeepSeekAgentBuilder::new_with_state(agent_state, context, resolver)
+            .base_system_sections(prompt_title, prompt_sections)
+            .remote_proxy(remote_proxy)
+            .compact(BotCompact::default())
+            .plugin(websearch_plugin())
+            .plugin(prks_plugin)
+            .plugin(inspiration_plugin(memory_dir.clone())?)
+            .plugin(memory_shard_plugin(memory_dir))
+            .plugin(review_plugin())
+            .build();
 
         Ok(Self { agent })
     }
@@ -73,20 +79,48 @@ impl BotAgent {
             .set_system_message(MessageOwned::System { content }.into());
     }
 
-    pub async fn respond(&mut self, message: ChannelMessage, content: String) -> Option<String> {
+    pub async fn respond(
+        &mut self,
+        message: ChannelMessage,
+        content: String,
+        respond_id: String,
+    ) -> Option<String> {
+        self.agent
+            .state_mut()
+            .begin_solve(SolveKind::Normal, respond_id.clone());
+
         let user_message = MessageOwned::User {
             // TODO: use actual sender_prks_id instead of "-"
-            content: prompt_text(message, content, "-"),
+            content: prompt_text(message, content, "-", &respond_id),
         }
         .into();
 
         self.agent.evaluate(user_message).await
     }
+
+    pub async fn respond_review_feedback(&mut self, event: ReviewFollowupEvent) -> Option<String> {
+        self.agent
+            .state_mut()
+            .begin_solve(SolveKind::ReviewFollowup, event.respond_id.clone());
+
+        let content = format!(
+            "[review_feedback]\nrespond_id: {}\ntarget_summary: {}\nfeedback: {}\n\n请只针对 respond_id 对应回答补充遗漏或修正错误，不要完整重答。",
+            event.respond_id, event.target_summary, event.feedback
+        );
+        let user_message = MessageOwned::User { content }.into();
+
+        self.agent.evaluate(user_message).await
+    }
 }
 
-fn prompt_text(message: ChannelMessage, content: String, sender_prks_id: &str) -> String {
+fn prompt_text(
+    message: ChannelMessage,
+    content: String,
+    sender_prks_id: &str,
+    respond_id: &str,
+) -> String {
     format!(
-        "[channel_id: {}, channel_name: {}, sender_id: {}, sender_nickname: {}, sender_channel_nickname: {}, sender_prks_id: {}, sent_at: {}]\n{}",
+        "[channel_id: {}, channel_name: {}, sender_id: {}, sender_nickname: {}, sender_channel_nickname: {}, sender_prks_id: {}, sent_at: {}, respond_id: {}]\n{}",
         message.channel_id,
         "-",
         message.actor.id,
@@ -94,6 +128,7 @@ fn prompt_text(message: ChannelMessage, content: String, sender_prks_id: &str) -
         message.actor.channel_nickname.as_deref().unwrap_or("-"),
         sender_prks_id,
         message.sent_at,
+        respond_id,
         content
     )
 }

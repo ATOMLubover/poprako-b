@@ -1,5 +1,4 @@
-use crate::bot::message::BotCommand;
-use crate::bot::message::ReplyTarget;
+use crate::bot::message::{BotCommand, ReplyTarget};
 
 pub fn split_reply_to_command(
     reply_target: ReplyTarget,

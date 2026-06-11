@@ -7,15 +7,11 @@ use crate::ai::agent::Agent;
 use crate::ai::resolver::IResolver;
 use crate::ai::resolver::context::Context;
 use crate::ai::resolver::message::IMessage;
-use crate::ai::session::persist::codec::IContextSnapshotCodec;
-use crate::ai::session::persist::codec::OpenAiCodec;
-use crate::ai::session::persist::data_object::Checkpoint;
-use crate::ai::session::persist::data_object::CheckpointContext;
-use crate::ai::session::persist::data_object::CheckpointKind;
-use crate::ai::session::persist::data_object::ContextSnapshot;
-use crate::ai::session::persist::data_object::NewCheckpoint;
-use crate::ai::session::persist::data_object::NewSession;
-use crate::ai::session::persist::data_object::Session;
+use crate::ai::session::persist::codec::{IContextSnapshotCodec, OpenAiCodec};
+use crate::ai::session::persist::data_object::{
+    Checkpoint, CheckpointContext, CheckpointKind, ContextSnapshot, NewCheckpoint, NewSession,
+    Session,
+};
 use crate::ai::session::persist::storage::IStorage;
 
 pub mod persist;
@@ -204,16 +200,13 @@ mod tests {
 
     use tokio::sync::Mutex;
 
+    use openai_oxide::types::chat::UserContent;
+
     use crate::ai::agent::AgentBuilder;
-    use crate::ai::resolver::action::Action;
-    use crate::ai::resolver::action::Reason;
+    use crate::ai::resolver::action::{Action, Reason};
     use crate::ai::resolver::context::ContextBuilder;
     use crate::ai::resolver::result::ResolveResult;
-    use crate::ai::session::persist::data_object::Message;
-    use crate::ai::session::persist::data_object::PersistDiagnostics;
-    use crate::ai::session::persist::data_object::Status;
-
-    use openai_oxide::types::chat::UserContent;
+    use crate::ai::session::persist::data_object::{Message, PersistDiagnostics, Status};
 
     #[derive(Default)]
     struct FakeStore {

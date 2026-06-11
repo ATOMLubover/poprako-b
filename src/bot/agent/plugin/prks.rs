@@ -7,14 +7,7 @@ use crate::ai::agent::IAgentPlugin;
 use crate::ai::agent::tool::DynTool;
 use crate::ai::resolver::IResolver;
 use crate::ai::resolver::message::IMessage;
-use crate::bot::agent::tool::poprako_s::GetComicPinnedChapterTool;
-use crate::bot::agent::tool::poprako_s::ListChapterAssignmentsTool;
-use crate::bot::agent::tool::poprako_s::ListComicChaptersTool;
-use crate::bot::agent::tool::poprako_s::ListMyMembersTool;
-use crate::bot::agent::tool::poprako_s::ListTeamWorksetsTool;
-use crate::bot::agent::tool::poprako_s::ListUserAssignmentsTool;
-use crate::bot::agent::tool::poprako_s::ListWorksetComicsTool;
-use crate::bot::agent::tool::poprako_s::PrksClient;
+use crate::bot::agent::tool::poprako_s::{GetComicPinnedChapterTool, ListChapterAssignmentsTool, ListComicChaptersTool, ListMyMembersTool, ListTeamWorksetsTool, ListUserAssignmentsTool, ListWorksetComicsTool, PrksClient};
 use crate::http::HttpClient;
 
 fn normalize_base_url(mut url: Url) -> Url {

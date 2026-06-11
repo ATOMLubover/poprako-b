@@ -4,6 +4,9 @@ pub mod tool;
 
 use url::Url;
 
+use serde_json::Value;
+use tracing::{Level, debug, instrument};
+
 use crate::ai::resolver::IResolver;
 use crate::ai::resolver::action::{Action, Reason};
 use crate::ai::resolver::context::Context;
@@ -11,8 +14,6 @@ use crate::ai::resolver::result::{ResolveError, ResolveResult};
 use crate::ai::resolver_impl::deepseek::data_object::{DeepSeekMessage, DeepSeekToolCall};
 use crate::http::HttpClient;
 use crate::http::result::HttpError;
-use serde_json::Value;
-use tracing::{Level, debug, instrument};
 
 pub struct DeepSeekResolver {
     pub client: HttpClient,
@@ -208,8 +209,10 @@ impl IResolver for DeepSeekResolver {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ai::resolver::action::Reason;
+
     use serde_json::json;
+
+    use crate::ai::resolver::action::Reason;
 
     // ── build_action unit tests (no network) ────────────────────────────────
 

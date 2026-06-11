@@ -10,8 +10,7 @@ use tokio::sync::mpsc;
 use crate::bot::app::BotApp;
 use crate::bot::event::BotEvent;
 use crate::bot::server::config::ReverseWebSockServerConfig;
-use crate::bot::server::onebot::OneBotSender;
-use crate::bot::server::onebot::channel_message_from_event;
+use crate::bot::server::onebot::{OneBotSender, channel_message_from_event};
 
 trait EventSource: Send {
     fn spawn(self: Box<Self>, send: mpsc::Sender<BotEvent>) -> anyhow::Result<()>;

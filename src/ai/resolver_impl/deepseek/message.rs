@@ -112,6 +112,7 @@ impl From<MessageOwned<DeepSeekToolCall>> for DeepSeekMessage {
 #[cfg(test)]
 mod tests {
     use super::*;
+
     use crate::ai::resolver::action::Reason;
     use crate::ai::resolver::message::MessageRole;
     use crate::ai::resolver::tool::IToolCall;

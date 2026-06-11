@@ -3,12 +3,9 @@ use uuid::Uuid;
 
 pub mod rdb;
 
-use crate::ai::session::persist::data_object::Checkpoint;
-use crate::ai::session::persist::data_object::CheckpointContext;
-use crate::ai::session::persist::data_object::NewCheckpoint;
-use crate::ai::session::persist::data_object::NewSession;
-use crate::ai::session::persist::data_object::PersistDiagnostics;
-use crate::ai::session::persist::data_object::Session;
+use crate::ai::session::persist::data_object::{
+    Checkpoint, CheckpointContext, NewCheckpoint, NewSession, PersistDiagnostics, Session,
+};
 
 #[async_trait]
 pub trait IStorage {

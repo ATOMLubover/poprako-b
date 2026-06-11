@@ -3,35 +3,25 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use anyhow::Context as _;
-use axum::Json;
-use axum::Router;
-use axum::extract::Path;
-use axum::extract::State;
+use axum::{Json, Router};
+use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use axum::routing::get;
-use axum::routing::post;
-use openai_oxide::types::chat::ChatCompletionMessageParam;
-use openai_oxide::types::chat::UserContent;
-use serde::Deserialize;
-use serde::Serialize;
+use axum::routing::{get, post};
+use openai_oxide::types::chat::{ChatCompletionMessageParam, UserContent};
+use serde::{Deserialize, Serialize};
 use tokio::net::TcpListener;
 use tokio::sync::Mutex;
 use tower_http::services::ServeDir;
 use uuid::Uuid;
 
-use crate::ai::agent_impl::openai::OpenAiAgent;
-use crate::ai::agent_impl::openai::OpenAiAgentBuilder;
+use crate::ai::agent_impl::openai::{OpenAiAgent, OpenAiAgentBuilder};
 use crate::ai::resolver_impl::openai::OpenAiResolver;
 use crate::ai::session::SessionManager;
-use crate::ai::session::persist::codec::IContextSnapshotCodec;
-use crate::ai::session::persist::codec::OpenAiCodec;
-use crate::ai::session::persist::data_object::Checkpoint;
-use crate::ai::session::persist::data_object::CheckpointKind;
-use crate::ai::session::persist::data_object::ContextSnapshot;
-use crate::ai::session::persist::data_object::Message;
-use crate::ai::session::persist::data_object::NewCheckpoint;
-use crate::ai::session::persist::data_object::Session;
+use crate::ai::session::persist::codec::{IContextSnapshotCodec, OpenAiCodec};
+use crate::ai::session::persist::data_object::{
+    Checkpoint, CheckpointKind, ContextSnapshot, Message, NewCheckpoint, Session,
+};
 use crate::ai::session::persist::storage::IStorage;
 use crate::ai::session::persist::storage::rdb::RdbStorage;
 

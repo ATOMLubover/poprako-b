@@ -1,27 +1,16 @@
-use rand::Rng;
 use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Context as _;
-use onebot_v11::Event;
-use onebot_v11::MessageSegment;
-use onebot_v11::api::payload::ApiPayload;
-use onebot_v11::api::payload::SendGroupMsg;
-use onebot_v11::api::payload::SendPrivateMsg;
+use onebot_v11::{Event, MessageSegment};
+use onebot_v11::api::payload::{ApiPayload, SendGroupMsg, SendPrivateMsg};
 use onebot_v11::connect::ws_reverse::ReverseWsConnect;
-use onebot_v11::event::message::GroupMessage;
-use onebot_v11::event::message::Message as OneBotMessage;
-use time::OffsetDateTime;
-use time::UtcOffset;
+use onebot_v11::event::message::{GroupMessage, Message as OneBotMessage};
+use rand::Rng as _;
+use time::{OffsetDateTime, UtcOffset};
 use tokio::sync::broadcast::error::RecvError;
 
-use crate::bot::message::BotCommand;
-use crate::bot::message::ChannelMessage;
-use crate::bot::message::ImageData;
-use crate::bot::message::MessageActor;
-use crate::bot::message::MessageContent;
-use crate::bot::message::MessagePart;
-use crate::bot::message::ReplyTarget;
+use crate::bot::message::{BotCommand, ChannelMessage, ImageData, MessageActor, MessageContent, MessagePart, ReplyTarget};
 
 const FIRST_REPLY_DELAY_MS: std::ops::Range<u64> = 2000..5000;
 const BATCH_REPLY_DELAY_MS: std::ops::Range<u64> = 2000..3000;
@@ -233,6 +222,7 @@ pub fn channel_message_from_event(event: Result<Event, RecvError>) -> Option<Cha
 #[cfg(test)]
 mod tests {
     use super::*;
+
     use onebot_v11::event::message::GroupMessageSender;
 
     #[test]

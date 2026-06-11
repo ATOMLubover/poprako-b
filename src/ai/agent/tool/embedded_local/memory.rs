@@ -555,9 +555,9 @@ impl ITool for ModifyMemoryShardTool {
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
-
     use super::*;
+
+    use std::path::Path;
 
     #[test]
     fn tool_definition_is_correct() {

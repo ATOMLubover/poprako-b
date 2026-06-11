@@ -3,11 +3,6 @@ pub mod context;
 pub mod message;
 pub mod tool;
 
-use crate::ai::resolver::IResolver;
-use crate::ai::resolver::action::{Action, Reason};
-use crate::ai::resolver::context::Context;
-use crate::ai::resolver::result::{ResolveError, ResolveResult};
-use crate::ai::resolver::tool::ToolDefination;
 use openai_oxide::types::chat::{
     ChatCompletionMessageParam, ChatCompletionRequest, FunctionCall, Tool as OxTool,
     ToolCall as OxToolCall, ToolChoice,
@@ -15,6 +10,12 @@ use openai_oxide::types::chat::{
 use openai_oxide::{ClientConfig, OpenAI, OpenAIError};
 use serde_json::Value;
 use tracing::{Level, debug, instrument};
+
+use crate::ai::resolver::IResolver;
+use crate::ai::resolver::action::{Action, Reason};
+use crate::ai::resolver::context::Context;
+use crate::ai::resolver::result::{ResolveError, ResolveResult};
+use crate::ai::resolver::tool::ToolDefination;
 
 pub struct OpenAiResolver {
     client: OpenAI,

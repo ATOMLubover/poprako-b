@@ -1,14 +1,9 @@
-use chrono::DateTime;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
-use crate::ai::session::persist::data_object;
-use crate::ai::session::persist::data_object::CheckpointKind;
-use crate::ai::session::persist::data_object::ContextSnapshot;
-use crate::ai::session::persist::data_object::Message;
-use crate::ai::session::persist::data_object::NewCheckpoint;
-use crate::ai::session::persist::data_object::NewSession;
-use crate::ai::session::persist::data_object::hash_message;
+use crate::ai::session::persist::data_object::{
+    self, CheckpointKind, ContextSnapshot, Message, NewCheckpoint, NewSession, hash_message,
+};
 
 // ── Session ──────────────────────────────────────────────────────────────────
 

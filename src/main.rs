@@ -3,8 +3,7 @@ use std::io;
 use anyhow::Result;
 #[cfg(not(debug_assertions))]
 use tracing_appender::non_blocking::WorkerGuard;
-use tracing_subscriber::EnvFilter;
-use tracing_subscriber::fmt;
+use tracing_subscriber::{EnvFilter, fmt};
 use tracing_subscriber::layer::SubscriberExt as _;
 use tracing_subscriber::util::SubscriberInitExt as _;
 

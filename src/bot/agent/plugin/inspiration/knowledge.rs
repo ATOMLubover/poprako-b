@@ -1,8 +1,7 @@
 use std::collections::HashSet;
-use std::path::Path;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-use anyhow::Context as AnyhowContext;
+use anyhow::Context as _;
 use regex::Regex;
 use serde::Deserialize;
 

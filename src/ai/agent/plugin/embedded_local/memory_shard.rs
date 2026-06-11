@@ -3,19 +3,14 @@ use std::path::PathBuf;
 use async_trait::async_trait;
 
 use crate::ai::agent::IAgentPlugin;
-use crate::ai::agent::interceptor::DynInterceptor;
-use crate::ai::agent::interceptor::IInterceptor;
-use crate::ai::agent::interceptor::InterceptorFlow;
+use crate::ai::agent::interceptor::{DynInterceptor, IInterceptor, InterceptorFlow};
 use crate::ai::agent::tool::DynTool;
 use crate::ai::agent::tool::embedded_local::memory::{
     GenerateMemoryShardTool, ModifyMemoryShardTool, RecallMemoryShardTool, parse_frontmatter,
 };
 use crate::ai::resolver::IResolver;
-use crate::ai::resolver::context::AnnotatedMessage;
-use crate::ai::resolver::context::Context;
-use crate::ai::resolver::message::IMessage;
-use crate::ai::resolver::message::MessageOwned;
-use crate::ai::resolver::message::MessageRef;
+use crate::ai::resolver::context::{AnnotatedMessage, Context};
+use crate::ai::resolver::message::{IMessage, MessageOwned, MessageRef};
 
 // ---------------------------------------------------------------------------
 // MemoryShardPlugin

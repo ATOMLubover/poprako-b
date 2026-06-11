@@ -4,29 +4,21 @@ pub mod plugin;
 pub mod prompt;
 pub mod tool;
 
-use std::collections::HashMap;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use crate::ai::agent::compact::{DynCompact, ICompact};
-use crate::ai::agent::interceptor::DynInterceptor;
-use crate::ai::agent::interceptor::IInterceptor;
-use crate::ai::agent::interceptor::InterceptorFlow;
-use crate::ai::agent::interceptor::InterceptorRegistry;
-use crate::ai::agent::interceptor::ToolInterceptorFlow;
-use crate::ai::agent::prompt::SectionContent;
-use crate::ai::agent::prompt::SystemPrompt;
-use crate::ai::agent::prompt::SystemPromptSection;
-use crate::ai::agent::prompt::SystemPromptSubSection;
+use crate::ai::agent::interceptor::{
+    DynInterceptor, IInterceptor, InterceptorFlow, InterceptorRegistry, ToolInterceptorFlow,
+};
+use crate::ai::agent::prompt::{
+    SectionContent, SystemPrompt, SystemPromptSection, SystemPromptSubSection,
+};
 use crate::ai::agent::tool::DynTool;
 use crate::ai::agent::tool::remote::RemoteProxy;
-use crate::ai::agent::tool::result::CallOutput;
-use crate::ai::agent::tool::result::CallResult;
-use crate::ai::agent::tool::result::ExecutionError;
+use crate::ai::agent::tool::result::{CallOutput, CallResult, ExecutionError};
 use crate::ai::resolver::IResolver;
-use crate::ai::resolver::action::Action;
-use crate::ai::resolver::action::Reason;
-use crate::ai::resolver::context::AnnotatedMessage;
-use crate::ai::resolver::context::Context;
+use crate::ai::resolver::action::{Action, Reason};
+use crate::ai::resolver::context::{AnnotatedMessage, Context};
 use crate::ai::resolver::message::{IMessage, MessageOwned, MessageRef};
 use crate::ai::resolver::tool::IToolCall;
 
@@ -511,6 +503,12 @@ where
         self
     }
 
+    /// Only used when independent tools are needed.
+    pub fn append_tools(mut self, tools: Vec<DynTool>) -> Self {
+        self.tools.extend(tools);
+        self
+    }
+
     /// Set the `#` title and `##`-level sections for the system prompt.
     /// Plugin-contributed sub-sections will be appended under a `## 插件说明`
     /// group during `build()`.
@@ -561,21 +559,18 @@ mod tests {
 
     use std::path::PathBuf;
     use std::sync::Arc;
-    use std::sync::atomic::AtomicUsize;
-    use std::sync::atomic::Ordering;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
-    use crate::ai::agent::compact::ICompact;
-    use crate::ai::agent::compact::SlidingWindowCompact;
+    use openai_oxide::types::chat::{
+        ChatCompletionMessageParam, ToolCall as OxToolCall, UserContent,
+    };
+
+    use crate::ai::agent::compact::{ICompact, SlidingWindowCompact};
     use crate::ai::agent::interceptor::InterceptorFlow;
     use crate::ai::agent::tool::embedded_local::fs::{CreateFileTool, ReadFileTool};
-    use crate::ai::resolver::context::AnnotatedMessage;
-    use crate::ai::resolver::context::ContextBuilder;
+    use crate::ai::resolver::context::{AnnotatedMessage, ContextBuilder};
     use crate::ai::resolver::result::ResolveResult;
     use crate::ai::resolver_impl::openai::OpenAiResolver;
-
-    use openai_oxide::types::chat::ChatCompletionMessageParam;
-    use openai_oxide::types::chat::ToolCall as OxToolCall;
-    use openai_oxide::types::chat::UserContent;
 
     /// Minimal plugin that holds tools and/or interceptors for testing.
     struct TestPlugin<M, S, A>
